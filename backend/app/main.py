@@ -86,7 +86,7 @@ def get_turning_points(game_id: str, limit: int = Query(5, ge=1, le=20)) -> list
         game = plays[plays["game_id"] == game_id]
         if game.empty:
             raise HTTPException(status_code=404, detail=f"Unknown game_id {game_id}")
-        turning_point_cache[key] = scenarios_for_game(game, limit)
+        turning_point_cache[key] = scenarios_for_game(game, get_store().wp, limit)
     return turning_point_cache[key]
 
 

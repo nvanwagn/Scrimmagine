@@ -65,37 +65,27 @@
   </div>
   <div class="sr-only" id="announce" role="status" aria-live="polite"></div>
 
-  <!-- pre-snap -->
+  <!-- one layout for the whole drive: booth + WP on the left, calls on the right -->
   <div class="presnap" id="presnap">
     <div class="presnap-left">
       <div class="panel onair">
-        <div class="kicker"><span class="dot"></span><span class="kicker-long">ON AIR · SETTING THE SCENE</span><span class="kicker-short">ON AIR</span></div>
-        <p id="intro"></p>
-      </div>
-      <div class="panel wp-panel">
-        <div class="wp-head"><span>WIN PROBABILITY</span><span>YOU vs COACH <span class="cream" id="vs-coach">±0.0</span></span></div>
-        <div class="wpbar" id="wpbar"></div>
+        <div class="kicker" id="onair-kicker"></div>
+        <div class="onair-body" id="onair-body"></div>
+        <div class="wp-section">
+          <div class="wp-head"><span>WIN PROBABILITY</span><span>YOU vs COACH <span class="cream" id="vs-coach">±0.0</span></span></div>
+          <div class="wp-delta" id="wp-delta" hidden></div>
+          <div class="wpbar" id="wpbar"></div>
+        </div>
       </div>
     </div>
     <div class="presnap-right">
       <div class="calls-head">
-        <h2>MAKE THE CALL</h2>
+        <h2 id="calls-title">MAKE THE CALL</h2>
         <span class="chip" id="down-chip"></span>
       </div>
       <div class="calls" id="calls"></div>
       <p class="call-error" id="call-error" role="alert" hidden></p>
     </div>
-  </div>
-
-  <!-- result -->
-  <div class="result" id="result" hidden>
-    <div class="result-grid">
-      <div class="panel wp-card" id="wp-card"></div>
-      <div class="panel booth" id="booth"></div>
-      <div class="panel coach-card" id="coach-card"></div>
-    </div>
-    <div class="result-actions" id="result-actions"></div>
-    <p class="call-error" id="call-error-2" role="alert" hidden></p>
   </div>
 </section>
 

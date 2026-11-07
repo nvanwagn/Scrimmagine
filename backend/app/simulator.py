@@ -13,6 +13,7 @@ DISTANCE_EDGES = [1, 3, 6, 10]   # buckets: 1 | 2-3 | 4-6 | 7-10 | 11+
 ZONE_EDGES = [20, 49, 79]        # zones: 1-20 red zone | 21-49 opp side | 50-79 own side | 80-99 backed up
 FG_WINDOW = 3                    # kicks within 3 yards of the attempt distance
 FG_SNAP_YARDS = 17               # kick distance = yardline_100 + 17
+FG_MAX_DISTANCE = 70             # longest real attempt in 2024-25; from here on, always a miss
 MISSED_FG_SPOT = 7               # defense takes over at the spot of the kick (LOS + 7)
 KICKOFF_YARDLINE = 70            # team receiving a kickoff starts at its own 30
 SAFETY_KICK_YARDLINE = 60        # team receiving a safety free kick starts at its own 40
@@ -136,6 +137,30 @@ def field_goal_kicks(pools: PlayPools, kick_distance: int) -> pd.DataFrame:
     if len(close) >= MIN_BUCKET:
         return close
     return pools.field_goals.loc[gap.nsmallest(MIN_BUCKET).index]
+
+
+def field_goal_make_chance(kicks: pd.DataFrame, distance: int) -> float:
+    """Real make rate of the sampled kicks. Past their average distance (the data runs thin
+    beyond ~63 yards) it fades linearly to 0 at FG_MAX_DISTANCE; longer tries always miss."""
+    if distance >= FG_MAX_DISTANCE:
+        return 0.0
+    rate = float((kicks["field_goal_result"] == "made").mean())
+    center = float(kicks["kick_distance"].mean())
+    if distance <= center:
+        return rate
+    return rate * (FG_MAX_DISTANCE - distance) / (FG_MAX_DISTANCE - center)
+
+
+def sample_field_goal(pools: PlayPools, state: GameState, rng: np.random.Generator) -> pd.Series:
+    """Decide make or miss from the distance, then sample a real kick with that result."""
+    distance = state.yardline_100 + FG_SNAP_YARDS
+    kicks = field_goal_kicks(pools, distance)
+    made = bool(rng.random() < field_goal_make_chance(kicks, distance))
+    matching = kicks[(kicks["field_goal_result"] == "made") == made]
+    if matching.empty:
+        result = "made" if made else "missed"
+        matching = pools.field_goals[pools.field_goals["field_goal_result"] == result]
+    return pick(matching, rng)
 
 
 # ---------- clock and state helpers ----------
@@ -313,8 +338,7 @@ def run_play(state: GameState, call: PlayCall, pools: PlayPools, rng: np.random.
     if call == PlayCall.punt:
         return apply_punt(state, sample_punt(pools, state, rng))
     if call == PlayCall.field_goal:
-        kicks = field_goal_kicks(pools, state.yardline_100 + FG_SNAP_YARDS)
-        return apply_field_goal(state, pick(kicks, rng))
+        return apply_field_goal(state, sample_field_goal(pools, state, rng))
     if call == PlayCall.run:
         return apply_scrimmage(state, call, sample_run(pools, state, rng))
     return apply_scrimmage(state, call, sample_pass(pools, state, call, rng))

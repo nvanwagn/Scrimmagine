@@ -72,8 +72,27 @@ class SimulateResponse(BaseModel):
     drive_over: bool
 
 
+class RealPlay(BaseModel):
+    """One snap the real coach called on the scenario's drive, scored with our WP model.
+
+    call is a PlayCall value, or "kneel" / "spike" (real calls the player can't make).
+    WP is from the coach's team's point of view.
+    """
+
+    state: GameState
+    call: str
+    description: str
+    wp_before: float
+    wp_after: float
+    wpa: float
+
+
 class Scenario(BaseModel):
-    """One playable starting moment from a real game."""
+    """One playable starting moment from a real game.
+
+    real_drive_wpa is our WP model's change for the coach's team from the drive's first
+    snap to the end of the drive, the same model that scores the player.
+    """
 
     id: str
     game_id: str
@@ -84,6 +103,7 @@ class Scenario(BaseModel):
     real_play_desc: str
     real_drive_wpa: float
     leverage_score: float
+    real_drive_plays: list[RealPlay] = Field(default_factory=list)
 
 
 class CommentaryRequest(BaseModel):

@@ -1,4 +1,4 @@
-"""Pick today's 6 scenarios: the top turning point from 6 close games, seeded by the date.
+"""Pick today's 6 scenarios: the last one-possession drive from 6 close games, seeded by the date.
 
 Run from backend/ once per day:  python -m scripts.build_scenarios [--date YYYY-MM-DD]
 """
@@ -10,9 +10,10 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from app.data_loader import SCENARIOS_PATH, load_plays
+from app.data_loader import MODEL_PATH, SCENARIOS_PATH, load_plays
 from app.models import Scenario
-from app.turning_points import scenarios_for_game
+from app.turning_points import WinProbFn, scenarios_for_game
+from app.wp_model import WinProbModel
 
 DAILY_COUNT = 6
 CLOSE_GAME_MARGIN = 8   # demo games: decided by one score or less
@@ -26,11 +27,11 @@ def demo_games(plays: pd.DataFrame, day: date) -> list[str]:
     return list(rng.permutation(close))
 
 
-def pick_daily(plays: pd.DataFrame, day: date) -> list[Scenario]:
-    """The best turning point from each of the first 6 usable demo games."""
+def pick_daily(plays: pd.DataFrame, day: date, win_prob: WinProbFn) -> list[Scenario]:
+    """The start of the last one-possession drive from each of the first 6 usable demo games."""
     picked: list[Scenario] = []
     for game_id in demo_games(plays, day):
-        found = scenarios_for_game(plays[plays["game_id"] == game_id], limit=1)
+        found = scenarios_for_game(plays[plays["game_id"] == game_id], win_prob, limit=1)
         picked.extend(found)
         if len(picked) == DAILY_COUNT:
             break
@@ -42,7 +43,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", type=date.fromisoformat, default=date.today())
     day = parser.parse_args().date
-    scenarios = pick_daily(load_plays(), day)
+    plays = load_plays()
+    scenarios = pick_daily(plays, day, WinProbModel.load(MODEL_PATH, plays))
     SCENARIOS_PATH.write_text(json.dumps([s.model_dump(mode="json") for s in scenarios], indent=2),
                               encoding="utf-8")
     print(f"Wrote {len(scenarios)} scenarios for {day} to {SCENARIOS_PATH}")

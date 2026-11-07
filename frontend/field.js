@@ -170,7 +170,9 @@ export class Field {
       });
     }
     if (m.gain) {
-      const left = this.px(m.gain.x) + (this.phone ? 12 : 20);
+      // Keep the chip inside the camera view (it sits to the right of the ball).
+      const viewRight = this.px(this.camX) + this.W / 2;
+      const left = Math.min(this.px(m.gain.x) + (this.phone ? 12 : 20), viewRight - (this.phone ? 120 : 190));
       const top = clamp(m.gain.y * this.H - (this.phone ? 52 : 70), 6, this.H - 40);
       parts.push(`<div class="gain-chip" style="left:${left.toFixed(1)}px;top:${top.toFixed(1)}px;color:${m.gain.color}">${m.gain.text}</div>`);
     }

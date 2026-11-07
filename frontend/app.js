@@ -7,7 +7,9 @@ import { kitsFor, loadSprites, spritesNow, mix, textOn } from './sprites.js';
 // ---------- constants ----------
 
 const CALLS = ['run', 'short_pass', 'deep_pass', 'punt', 'field_goal'];
-const CALL_LABEL = { run: 'RUN', short_pass: 'SHORT PASS', deep_pass: 'DEEP PASS', punt: 'PUNT', field_goal: 'FIELD GOAL' };
+// kneel / spike only appear in the real coach's drive.
+const CALL_LABEL = { run: 'RUN', short_pass: 'SHORT PASS', deep_pass: 'DEEP PASS', punt: 'PUNT', field_goal: 'FIELD GOAL', kneel: 'KNEEL', spike: 'SPIKE' };
+const FG_MAX_DISTANCE = 70; // mirrors backend simulator.FG_MAX_DISTANCE: from here on, always a miss
 const GOOD_OUTCOMES = new Set(['first_down', 'touchdown', 'fg_made']);
 const FAIL_OUTCOMES = new Set(['turnover', 'turnover_on_downs', 'fg_missed']);
 const GOOD = '#7dffa0', BAD = '#ff8f84';
@@ -151,16 +153,14 @@ async function startScenario(index) {
   };
   app.busy = false;
   show('game');
-  screens.game.classList.remove('is-result');
-  $('presnap').hidden = false;
-  $('result').hidden = true;
   $('banner').hidden = true;
   $('call-error').hidden = true;
-  $('intro').textContent = sc.intro;
+  setOnAir('ON AIR · SETTING THE SCENE', `<p class="intro">${esc(sc.intro)}</p>`);
   $('vs-coach').textContent = '±0.0';
+  $('wp-delta').hidden = true;
   field.setup(s, kits, endZones());
   renderScorebug(s);
-  renderPresnapCalls(s);
+  renderCalls(s);
   renderWpBar($('wpbar'), null);
 
   // Pre-snap WP comes from a throwaway simulation (see api.winProbability).
@@ -168,7 +168,7 @@ async function startScenario(index) {
   api.winProbability(s).then(wp => {
     if (app.game?.token !== token || app.game.wpNow != null) return;
     app.game.wpNow = wp;
-    if (app.game.phase === 'presnap') renderWpBar($('wpbar'), wp);
+    if (app.game.phase === 'presnap' && !app.game.plays.length) renderWpBar($('wpbar'), wp);
   }).catch(err => console.warn('WP probe failed', err));
 }
 
@@ -235,7 +235,8 @@ function renderWpBar(bar, before, after = null, withLabels = true) {
       <div class="seg" style="width:${(before - after) * 100}%;background:repeating-linear-gradient(45deg, ${def} 0 4px, ${off} 4px 8px)"></div>
       <div class="seg" style="flex:1;background:${def}"></div>`;
   }
-  const labels = withLabels ? `<span class="lbl l">${esc(g.team)} ${pct(before)}</span><span class="lbl r">${pct(1 - before)}</span>` : '';
+  const now = after ?? before;
+  const labels = withLabels ? `<span class="lbl l">${esc(g.team)} ${pct(now)}</span><span class="lbl r">${pct(1 - now)}</span>` : '';
   bar.innerHTML = segs + labels;
 }
 
@@ -250,31 +251,102 @@ function callHint(call, s) {
     case 'punt': return 'Flip the field, trust the D';
     case 'field_goal': {
       const diff = s.offense_score - s.defense_score;
+      const yds = s.yardline_100 + 17;
+      if (yds >= FG_MAX_DISTANCE) return `${yds} yds · out of range`;
       const effect = diff + 3 === 0 ? ' · ties it' : diff < 0 && diff + 3 > 0 ? ' · takes the lead' : '';
-      return `${s.yardline_100 + 17} yds${effect}`;
+      return `${yds} yds${effect}`;
     }
     default: return '';
   }
 }
 
-function renderPresnapCalls(s) {
+/** The left box: kicker line plus the intro or the booth lines. */
+function setOnAir(kicker, bodyHtml) {
+  $('onair-kicker').innerHTML = `<span class="dot"></span>${esc(kicker)}`;
+  $('onair-body').innerHTML = bodyHtml;
+}
+
+/** The call grid stays in place for the whole drive: 5 calls plus the real-coach tile. */
+function renderCalls(s) {
   const legal = legalCalls(s);
   const all = CALLS.every(c => legal[c]);
-  const chip = $('down-chip');
   const why = s.down === 4 ? '4TH DOWN' : all ? 'UNDER 2:00' : `${ordinal(s.down)} DOWN`;
   const rest = all ? ' · EVERY CALL IS LIVE' : ' · KICKS ON 4TH';
+  const chip = $('down-chip');
   chip.className = all ? 'chip' : 'chip quiet';
   chip.innerHTML = `${why}<span class="long">${rest}</span>`;
-  $('calls').innerHTML = CALLS.map((c, i) => `
+  $('calls-title').textContent = 'MAKE THE CALL';
+  const grid = $('calls');
+  grid.className = 'calls';
+  grid.innerHTML = CALLS.map((c, i) => `
     <button type="button" class="call" data-call="${c}" ${legal[c] ? '' : 'disabled'}>
       <span class="name"><span class="key">${i + 1}</span><span>${CALL_LABEL[c]}</span></span>
       <span class="hint">${esc(callHint(c, s))}</span>
-    </button>`).join('') +
-    `<div class="coach-tease"><b>REAL COACH?</b>Revealed after you snap it.</div>`;
+    </button>`).join('') + coachTile();
+}
+
+/** The real coach's drive, scored by the same WP model as the player. */
+const coachPlays = () => app.game.scenario.real_drive_plays || [];
+
+/** Coach's WPA after their first n plays (their whole drive once n reaches its length). */
+function coachWpaThrough(n) {
+  const real = coachPlays();
+  if (!real.length || n >= real.length) return app.game.scenario.real_drive_wpa;
+  return real.slice(0, n).reduce((sum, p) => sum + p.wpa, 0);
+}
+
+/** nflverse text without the leading clock and formation tags: "(1:35) (Shotgun) ..." */
+const cleanDesc = d => String(d || '').replace(/^(\s*\([^)]*\)\s*)+/, '');
+
+const callLabel = c => CALL_LABEL[c] || String(c).toUpperCase();
+
+/** Teaser before the first snap; after your play n, what the coach called on their play n. */
+function coachTile() {
+  const g = app.game;
+  const n = g.plays.length;
+  if (!n) return '<div class="coach-tease"><b>REAL COACH?</b>Revealed after you snap it.</div>';
+  const real = coachPlays();
+  const cp = real[n - 1];
+  if (!real.length) {
+    // scenarios.json built before real_drive_plays existed: only the first call is known.
+    return `<div class="coach-tile" title="${esc(g.scenario.real_play_desc)}"><b>REAL COACH'S FIRST CALL</b>
+      <span class="cc-call">${callLabel(g.scenario.real_call)}</span></div>`;
+  }
+  if (!cp) {
+    return `<div class="coach-tile"><b>REAL COACH · PLAY ${n}</b><span class="cc-call">DRIVE OVER</span>
+      <span class="cc-desc">Their drive ended after ${real.length} play${real.length === 1 ? '' : 's'}.</span></div>`;
+  }
+  return `<div class="coach-tile" title="${esc(cp.description)}">
+    <b>COACH PLAY ${n} · ${esc(downText(cp.state))}</b>
+    <span class="cc-call">${callLabel(cp.call)} <span style="color:${cp.wpa >= 0 ? GOOD : BAD}">${pts(cp.wpa)}</span></span>
+    <span class="cc-desc">${esc(cleanDesc(cp.description))}</span>
+  </div>`;
+}
+
+/** Same grid slots once the drive ends: summary, try again, the verdict and the coach tile. */
+function renderOverGrid(sim) {
+  const chip = $('down-chip');
+  chip.className = FAIL_OUTCOMES.has(sim.result.outcome) ? 'chip bad' : 'chip';
+  chip.textContent = driveEndLabel(sim);
+  $('calls-title').textContent = 'DRIVE OVER';
+  const grid = $('calls');
+  grid.className = 'calls over';
+  grid.innerHTML = `
+    <button type="button" class="call primary span2" id="btn-see-summary">
+      <span class="name"><span>SEE SUMMARY ▶</span></span><span class="hint">Your grade vs the real coach</span>
+    </button>
+    <button type="button" class="call" id="btn-try-again">
+      <span class="name"><span>TRY AGAIN</span></span><span class="hint">Replay this moment</span>
+    </button>
+    <div class="over-msg span2">${esc(overMessage(sim))}</div>
+    ${coachTile()}`;
+  $('btn-see-summary').addEventListener('click', showSummary);
+  $('btn-try-again').addEventListener('click', () => startScenario(app.game.index));
+  $('btn-see-summary').focus({ preventScroll: true });
 }
 
 function setCallsBusy(busy) {
-  document.querySelectorAll('#calls .call, #result-actions .mini-call').forEach(b => {
+  document.querySelectorAll('#calls button[data-call]').forEach(b => {
     if (busy) { b.dataset.wasDisabled = b.disabled ? '1' : ''; b.disabled = true; b.classList.add('busy'); }
     else { b.disabled = b.dataset.wasDisabled === '1'; b.classList.remove('busy'); }
   });
@@ -286,7 +358,6 @@ async function makeCall(call) {
   app.busy = true;
   setCallsBusy(true);
   $('call-error').hidden = true;
-  $('call-error-2').hidden = true;
   const before = g.state;
   const token = g.token;
 
@@ -296,9 +367,8 @@ async function makeCall(call) {
   } catch (err) {
     console.warn(err);
     if (app.game?.token !== token) return;
-    const box = g.phase === 'presnap' ? $('call-error') : $('call-error-2');
-    box.textContent = "Couldn't reach the field. Check the server and try that call again.";
-    box.hidden = false;
+    $('call-error').textContent = "Couldn't reach the field. Check the server and try that call again.";
+    $('call-error').hidden = false;
     app.busy = false;
     setCallsBusy(false);
     return;
@@ -309,10 +379,10 @@ async function makeCall(call) {
   g.plays.push({ before, call, sim, booth: null });
   requestBooth(i);
 
-  if (g.phase === 'result') {
-    field.setup(before, g.kits, endZones());
-  }
+  if (i > 0) field.setup(before, g.kits, endZones());
   $('banner').hidden = true;
+  // Hold the booth lines until the animation lands so they can't spoil the result.
+  setOnAir('THE BOOTH', '<p class="pending">Booth is on the mic</p>');
   g.phase = 'animating';
   const plan = buildPlan(field, before, sim);
   await field.play(plan);
@@ -321,7 +391,7 @@ async function makeCall(call) {
   field.setMarks(aftermathMarks(before, sim, plan));
   g.state = sim.new_state;
   g.wpNow = sim.wp_after;
-  g.phase = sim.drive_over ? 'over' : 'result';
+  g.phase = sim.drive_over ? 'over' : 'presnap';
   if (sim.drive_over) recordGrade();
   showResult(i);
   app.busy = false;
@@ -387,13 +457,9 @@ function bannerFor(sim) {
 
 function showResult(i) {
   const g = app.game;
-  const p = g.plays[i];
-  const { sim } = p;
+  const { sim } = g.plays[i];
   const r = sim.result;
   g.shown = i;
-  screens.game.classList.add('is-result');
-  $('presnap').hidden = true;
-  $('result').hidden = false;
 
   // Banner over the field.
   const [title, kind] = bannerFor(sim);
@@ -404,27 +470,27 @@ function showResult(i) {
   $('announce').textContent = `${title} ${r.description} Win probability ${pct(sim.wp_before)} to ${pct(sim.wp_after)}.`;
 
   // Score bug shows the new state.
-  const s = sim.new_state;
   const over = sim.drive_over;
-  renderScorebug(s, {
+  renderScorebug(sim.new_state, {
     showPossession: true,
     downLabel: over ? driveEndLabel(sim) : undefined,
     downBad: over && FAIL_OUTCOMES.has(r.outcome),
     right: `PLAY ${i + 1} OF DRIVE`,
   });
 
-  // WP card.
-  const wpaColor = sim.wpa >= 0 ? GOOD : BAD;
-  $('wp-card').innerHTML = `
-    <span class="label9">WIN PROBABILITY</span>
-    <div class="wp-nums"><span class="from">${pct(sim.wp_before)}</span><span class="arrow">▶</span><span class="to">${pct(sim.wp_after)}</span></div>
-    <div class="wpbar small" id="wpbar-result"></div>
-    <span class="wpa-chip" style="background:${wpaColor}">WPA ${pts(sim.wpa)}</span>`;
-  renderWpBar($('wpbar-result'), sim.wp_before, sim.wp_after, false);
+  // Win probability lives in the same box as the booth.
+  const delta = $('wp-delta');
+  delta.hidden = false;
+  delta.innerHTML = `<span class="from">${pct(sim.wp_before)}</span><span class="arrow">▶</span><span class="to">${pct(sim.wp_after)}</span>` +
+    `<span class="wpa-chip" style="background:${sim.wpa >= 0 ? GOOD : BAD}">WPA ${pts(sim.wpa)}</span>`;
+  renderWpBar($('wpbar'), sim.wp_before, sim.wp_after);
+  // Same number of plays on both sides; once your drive is over, their whole drive.
+  const coachSoFar = over ? g.scenario.real_drive_wpa : coachWpaThrough(i + 1);
+  $('vs-coach').textContent = pts(yourWpa() - coachSoFar);
 
   renderBooth(i);
-  renderCoachCard();
-  renderResultActions(sim);
+  if (over) renderOverGrid(sim);
+  else renderCalls(sim.new_state);
 }
 
 function driveEndLabel(sim) {
@@ -439,12 +505,12 @@ function renderBooth(i) {
   const b = g.plays[i].booth;
   let body;
   if (!b) body = '<p class="pending">Booth is on the mic</p>';
-  else if (b.error) body = '<p class="pending" style="animation:none">Booth feed dropped. Play on.</p>';
+  else if (b.error) body = '<p class="pending done">Booth feed dropped. Play on.</p>';
   else {
     body = `<div class="booth-line"><span class="who">PBP</span><p>"${esc(b.line_1)}"</p></div>
       <div class="booth-line color"><span class="who">COLOR</span><p>"${esc(b.line_2)}"</p></div>`;
   }
-  $('booth').innerHTML = `<div class="kicker"><span class="dot"></span>THE BOOTH</div>${body}`;
+  setOnAir('THE BOOTH', body);
 }
 
 /** Commentary runs alongside the animation and never blocks the next call. */
@@ -462,47 +528,13 @@ function yourWpa() {
   return app.game.plays.reduce((sum, p) => sum + p.sim.wpa, 0);
 }
 
-function renderCoachCard() {
-  const g = app.game;
-  const sc = g.scenario;
-  const you = yourWpa(), coach = sc.real_drive_wpa;
-  const k = g.kits.off;
-  const pose = sc.real_call === 'deep_pass' || sc.real_call === 'short_pass' ? 'throw' : sc.real_call === 'run' ? 'run' : 'ready';
-  $('coach-card').innerHTML = `
-    <span class="label9">WHAT THE REAL COACH DID</span>
-    <div class="coach-call"><img src="${spritesNow(k)[pose]}" alt=""><span>${CALL_LABEL[sc.real_call]}</span></div>
-    <span class="coach-desc" title="${esc(sc.real_play_desc)}">${esc(sc.real_play_desc)}</span>
-    <div class="coach-score"><span style="color:${you >= 0 ? GOOD : BAD}">YOU ${pts(you)}</span><span style="color:${coach >= 0 ? GOOD : BAD}">COACH ${pts(coach)}</span></div>`;
-  $('vs-coach').textContent = pts(you - coach);
-}
-
-function renderResultActions(sim) {
-  const box = $('result-actions');
-  if (sim.drive_over) {
-    box.className = 'result-actions over';
-    box.innerHTML = `
-      <span class="over-msg">${esc(overMessage(sim))}</span>
-      <button type="button" class="act-btn" id="btn-try-again">TRY AGAIN</button>
-      <button type="button" class="act-btn primary" id="btn-see-summary">SEE SUMMARY ▶</button>`;
-    $('btn-try-again').addEventListener('click', () => startScenario(app.game.index));
-    $('btn-see-summary').addEventListener('click', showSummary);
-    $('btn-see-summary').focus({ preventScroll: true });
-    return;
-  }
-  const s = sim.new_state;
-  const legal = legalCalls(s);
-  box.className = 'result-actions';
-  box.innerHTML = `<span class="next-label">NEXT: ${esc(downText(s))}</span>` +
-    CALLS.map(c => `<button type="button" class="mini-call" data-call="${c}" ${legal[c] ? '' : 'disabled'}>${CALL_LABEL[c]}</button>`).join('');
-}
-
 function overMessage(sim) {
   const r = sim.result;
-  if (r.outcome === 'touchdown') return 'Drive over. Six on the board, and the extra point is assumed good.';
-  if (r.outcome === 'fg_made') return 'Drive over. Three points banked.';
-  if (r.outcome === 'punt') return 'Drive over. The defense takes it from here.';
-  if (FAIL_OUTCOMES.has(r.outcome)) return "Drive over. It didn't pay off, but the grade rewards the decision, not just the result.";
-  return 'Drive over. The clock ran out on the half.';
+  if (r.outcome === 'touchdown') return 'Six on the board, and the extra point is assumed good.';
+  if (r.outcome === 'fg_made') return 'Three points banked.';
+  if (r.outcome === 'punt') return 'The defense takes it from here.';
+  if (FAIL_OUTCOMES.has(r.outcome)) return "It didn't pay off, but the grade rewards the decision, not just the result.";
+  return 'The clock ran out on the half.';
 }
 
 // ---------- summary ----------
@@ -579,20 +611,39 @@ function showSummary() {
   const meter = v => Math.min(100, Math.abs(v * 100) * 2);
   const youText = `${plays.length} call${plays.length === 1 ? '' : 's'}, ended in ${resultShort(plays[plays.length - 1]).toLowerCase()}. WP ${pct(plays[0].sim.wp_before)} → ${pct(last.wp_after)}.`;
 
+  const real = coachPlays();
+  const sitText = s => `${downTextLower(s)} · ${spot(s).replace('THE ', 'the ')}`;
+  const coachCell = cp => (cp
+    ? `${callLabel(cp.call)} <span style="color:${cp.wpa >= 0 ? GOOD : BAD}">${pts(cp.wpa)}</span>`
+    : '<span class="muted">—</span>');
+
+  // Your drive, with what the coach called on the same play number.
   const rows = plays.map((p, i) => {
-    const b = p.before;
-    const sit = `${downTextLower(b)} · ${spot(b).replace('THE ', 'the ')}`;
+    const sit = sitText(p.before);
     const tag = i === best ? `<span class="tagchip" style="background:${GOOD}">BEST CALL</span>`
       : i === worst ? `<span class="tagchip" style="background:${BAD}">WORST CALL</span>` : '';
     return `<tr>
       <td class="n">${i + 1}</td>
       <td class="sit">${esc(sit)}</td>
-      <td class="callc">${CALL_LABEL[p.call]}<span class="sit-phone">${esc(sit)}</span></td>
+      <td class="callc">${CALL_LABEL[p.call]}<span class="sit-phone">${esc(sit)}</span><span class="sit-phone">Coach: ${coachCell(real[i])}</span></td>
       <td class="res">${esc(resultShort(p))}</td>
       <td class="wpa" style="color:${p.sim.wpa >= 0 ? GOOD : BAD}">${pts(p.sim.wpa)}</td>
+      <td class="coachc">${coachCell(real[i])}</td>
       <td class="tag">${tag}</td>
     </tr>`;
   }).join('');
+
+  // The real drive, every snap, scored by the same model.
+  const realRows = real.map((cp, i) => `<tr>
+      <td class="n">${i + 1}</td>
+      <td class="sit">${esc(sitText(cp.state))}</td>
+      <td class="callc">${callLabel(cp.call)}<span class="sit-phone">${esc(sitText(cp.state))}</span></td>
+      <td class="res">${esc(cleanDesc(cp.description))}</td>
+      <td class="wpa" style="color:${cp.wpa >= 0 ? GOOD : BAD}">${pts(cp.wpa)}</td>
+    </tr>`).join('');
+  const coachText = real.length
+    ? `${real.length} call${real.length === 1 ? '' : 's'}, ended: ${cleanDesc(real[real.length - 1].description)} WP ${pct(real[0].wp_before)} → ${pct(real[real.length - 1].wp_after)}.`
+    : sc.real_play_desc;
 
   $('summary-body').innerHTML = `
     <div class="sum-head">
@@ -634,18 +685,25 @@ function showSummary() {
             <span class="txt">${esc(youText)}</span>
           </div>
           <div class="panel vs-card coach">
-            <div class="vs-top"><span class="who">REAL COACH · ${CALL_LABEL[sc.real_call]}</span><span class="num" style="color:${coach >= 0 ? GOOD : BAD}">${pts(coach)}</span></div>
+            <div class="vs-top"><span class="who">REAL COACH · ${real.length ? `${real.length} CALL${real.length === 1 ? '' : 'S'}` : callLabel(sc.real_call)}</span><span class="num" style="color:${coach >= 0 ? GOOD : BAD}">${pts(coach)}</span></div>
             <div class="meter"><div style="width:${meter(coach)}%;background:${coach >= 0 ? GOOD : BAD}"></div></div>
-            <span class="txt">${esc(sc.real_play_desc)}</span>
+            <span class="txt">${esc(coachText)}</span>
           </div>
         </div>
         <div class="panel log">
           <h2>PLAY BY PLAY</h2>
           <table>
-            <thead><tr><th class="n">#</th><th class="sit">SITUATION</th><th>YOUR CALL</th><th>RESULT</th><th style="text-align:right">WPA</th><th></th></tr></thead>
+            <thead><tr><th class="n">#</th><th class="sit">SITUATION</th><th>YOUR CALL</th><th>RESULT</th><th style="text-align:right">WPA</th><th>COACH ON PLAY #</th><th></th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
+        ${real.length ? `<div class="panel log coach-log">
+          <h2>THE REAL DRIVE</h2>
+          <table>
+            <thead><tr><th class="n">#</th><th class="sit">SITUATION</th><th>COACH CALL</th><th>WHAT HAPPENED</th><th style="text-align:right">WPA</th></tr></thead>
+            <tbody>${realRows}</tbody>
+          </table>
+        </div>` : ''}
       </div>
     </div>`;
   $('btn-next').addEventListener('click', () => startScenario((g.index + 1) % app.scenarios.length));
@@ -672,10 +730,6 @@ $('scenario-list').addEventListener('click', e => {
 $('btn-play-all').addEventListener('click', () => app.scenarios.length && startScenario(0));
 $('btn-random').addEventListener('click', () => app.scenarios.length && startScenario(Math.floor(Math.random() * app.scenarios.length)));
 $('calls').addEventListener('click', e => {
-  const b = e.target.closest('button[data-call]');
-  if (b && !b.disabled) makeCall(b.dataset.call);
-});
-$('result-actions').addEventListener('click', e => {
   const b = e.target.closest('button[data-call]');
   if (b && !b.disabled) makeCall(b.dataset.call);
 });

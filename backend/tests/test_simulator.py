@@ -6,8 +6,8 @@ import pytest
 
 from app.data_loader import PBP_PATH
 from app.models import GameState, Outcome, PlayCall, SimulateResponse
-from app.simulator import (MIN_BUCKET, apply_field_goal, apply_punt, apply_scrimmage, build_pools,
-                           find_bucket, run_clock, simulate)
+from app.simulator import (FG_MAX_DISTANCE, MIN_BUCKET, apply_field_goal, apply_punt, apply_scrimmage,
+                           build_pools, field_goal_make_chance, find_bucket, run_clock, simulate)
 from conftest import full_grid, make_play
 
 
@@ -172,6 +172,30 @@ def test_field_goal_made_and_missed(state: GameState) -> None:
     assert made.new_state.offense == "NVY" and made.possession_flipped
     missed = apply_field_goal(state, pd.Series(make_play(2, "field_goal", 4, 5, 40, field_goal_result="missed")))
     assert missed.result.outcome == Outcome.fg_missed and missed.new_state.yardline_100 == 53
+
+
+def test_field_goal_chance_fades_past_the_data() -> None:
+    """Real make rate up to the kicks' average distance, then a linear fade to 0 at 70 yards."""
+    kicks = pd.DataFrame({"kick_distance": [64.0] * 4, "field_goal_result": ["made"] * 4})
+    assert field_goal_make_chance(kicks, 60) == 1.0
+    assert field_goal_make_chance(kicks, 67) == pytest.approx(0.5)
+    assert field_goal_make_chance(kicks, FG_MAX_DISTANCE) == 0.0
+    assert field_goal_make_chance(kicks, 116) == 0.0
+
+
+@pytest.mark.skipif(not PBP_PATH.exists(), reason="real data not downloaded")
+def test_impossible_field_goals_always_miss(state: GameState) -> None:
+    """A 116-yard try never goes in; a chip shot almost always does."""
+    from app.data_loader import load_plays
+    pools = build_pools(load_plays())
+    rng = np.random.default_rng(2)
+    deep = state.model_copy(update={"down": 4, "yardline_100": 99})
+    assert all(simulate(deep, PlayCall.field_goal, pools, lambda s: 0.5, rng).result.outcome == Outcome.fg_missed
+               for _ in range(200))
+    close = state.model_copy(update={"down": 4, "distance": 5, "yardline_100": 5})
+    made = sum(simulate(close, PlayCall.field_goal, pools, lambda s: 0.5, rng).result.outcome == Outcome.fg_made
+               for _ in range(200))
+    assert made >= 180
 
 
 def test_clock_rules(state: GameState) -> None:
