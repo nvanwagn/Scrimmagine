@@ -129,6 +129,7 @@ class CommentaryRequest(BaseModel):
     result: PlayResult
     wp_before: float
     wp_after: float
+    players: OffensePlayers | None = None   # optional: the scenario's offense_players, for names
 
 
 class Commentary(BaseModel):
@@ -136,6 +137,7 @@ class Commentary(BaseModel):
 
     line_1: str
     line_2: str
+
 
 
 class Game(BaseModel):

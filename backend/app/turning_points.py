@@ -218,3 +218,4 @@ def random_endless_scenario(plays: pd.DataFrame, win_prob: WinProbFn, rng: np.ra
         play = candidates.iloc[-1]
         return build_scenario(game, play, intro_fn(state_from_row(play), str(play["desc"])), win_prob)
     return None
+

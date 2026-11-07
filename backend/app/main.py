@@ -117,6 +117,7 @@ def post_commentary(body: CommentaryRequest) -> Commentary:
     return generate_commentary(body)
 
 
+
 app.mount("/sprites", StaticFiles(directory=REPO_ROOT / "sprites"), name="sprites")
 if (REPO_ROOT / "sound-effects").is_dir():
     app.mount("/sound-effects", StaticFiles(directory=REPO_ROOT / "sound-effects"), name="sound-effects")

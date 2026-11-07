@@ -145,6 +145,18 @@ function renderHome() {
 
 // ---------- gameplay ----------
 
+/** Score bug corner text: which set this drive belongs to. */
+function modeLabel(g) {
+  if (g.mode === 'endless') return `ENDLESS · STREAK ${app.endless.streak}`;
+  return `SCENARIO ${g.index + 1} / ${app.scenarios.length}`;
+}
+
+/** Play the current drive again from the top. */
+function replayGame() {
+  const g = app.game;
+  return g.mode === 'daily' ? startScenario(g.index) : startGame(g.scenario, { mode: g.mode });
+}
+
 /** Start one of today's 6 by its position in the list. */
 function startScenario(index) {
   const sc = app.scenarios[index];
@@ -227,7 +239,7 @@ function renderScorebug(s, opts = {}) {
     <div class="sb-clock"><span class="q"><span class="long">${quarterLong(s)}</span><span class="short">${quarterShort(s)}</span></span><span class="t">${clock(s)}</span></div>
     <div class="sb-down${downCls}">${esc(downLabel)}</div>
     <div class="sb-spot">${esc(spotLabel)}</div>
-    <div class="sb-right">${esc(opts.right || (g.mode === 'endless' ? `ENDLESS · STREAK ${app.endless.streak}` : `SCENARIO ${g.index + 1} / ${app.scenarios.length}`))}</div>`;
+    <div class="sb-right">${esc(opts.right || modeLabel(g))}</div>`;
   const db = $('downbar');
   db.className = `downbar${downCls}`;
   db.innerHTML = `<span>${esc(downLabel)}</span><span>${esc(spotLabel)}</span>`;
@@ -362,7 +374,7 @@ function renderOverGrid(sim) {
     <div class="over-msg span2">${esc(overMessage(sim))}</div>
     ${coachTile()}`;
   $('btn-see-summary').addEventListener('click', showSummary);
-  $('btn-try-again').addEventListener('click', () => startScenario(app.game.index));
+  $('btn-try-again').addEventListener('click', replayGame);
   $('btn-see-summary').focus({ preventScroll: true });
 }
 
@@ -544,7 +556,7 @@ function requestBooth(i) {
   const g = app.game;
   const token = g.token;
   const p = g.plays[i];
-  api.commentary(p.before, p.sim)
+  api.commentary(p.before, p.sim, g.scenario.offense_players || null)
     .then(c => { p.booth = c; })
     .catch(err => { console.warn('Commentary failed', err); p.booth = { error: true }; })
     .finally(() => { if (app.game?.token === token) renderBooth(i); });
@@ -768,7 +780,7 @@ function showSummary() {
       </div>
     </div>`;
   $('btn-next').addEventListener('click', () => (isLast ? showFinal() : startScenario(g.index + 1)));
-  $('btn-replay').addEventListener('click', () => startScenario(g.index));
+  $('btn-replay').addEventListener('click', replayGame);
   $('btn-sum-menu').addEventListener('click', goHome);
   show('summary');
   if (grade === 'A' || grade === 'B') playSfx('win');
@@ -869,8 +881,9 @@ function goHome() {
 }
 
 // ---------- endless mode ----------
-// Random one-possession drives where you need a touchdown. Score one and the next random
-// game loads; anything else ends the run. The score is how many you win in a row.
+// Random one-possession drives where you're tied or trailing. A touchdown, or a field goal
+// that ties it or takes the lead, loads the next random game; anything else ends the run.
+// The score is how many rounds you survive in a row.
 
 const BEST_KEY = 'scrimmagine.endlessBest';
 
@@ -928,11 +941,28 @@ async function nextEndlessRound() {
   return true;
 }
 
-/** Called when an endless drive ends: a touchdown extends the streak, anything else ends the run. */
+/** Your lead once the drive is over (negative if you're still behind). */
+function leadAfter(sim) {
+  const s = sim.new_state, team = app.game.team;
+  return s.offense === team ? s.offense_score - s.defense_score : s.defense_score - s.offense_score;
+}
+
+/** How an endless round was survived ('TOUCHDOWN', 'FG TIES IT', 'FG GO-AHEAD'), or null if it wasn't. */
+function endlessWin(sim) {
+  const outcome = sim.result.outcome;
+  if (outcome === 'touchdown') return 'TOUCHDOWN';
+  if (outcome !== 'fg_made') return null;
+  const lead = leadAfter(sim);
+  return lead === 0 ? 'FG TIES IT' : lead > 0 ? 'FG GO-AHEAD' : null;
+}
+
+/** Called when an endless drive ends: a touchdown, or a field goal that ties it or takes the
+ * lead, extends the streak; anything else ends the run. */
 function recordEndlessRound(sim) {
   const e = app.endless;
-  const won = sim.result.outcome === 'touchdown';
-  e.rounds.push({ scenario: app.game.scenario, won, label: driveEndLabel(sim) });
+  const how = endlessWin(sim);
+  const won = how !== null;
+  e.rounds.push({ scenario: app.game.scenario, won, label: how || driveEndLabel(sim) });
   if (!won) return;
   e.streak += 1;
   if (e.streak > e.best) {
@@ -944,7 +974,8 @@ function recordEndlessRound(sim) {
 
 function renderEndlessOverGrid(sim) {
   const e = app.endless;
-  const won = sim.result.outcome === 'touchdown';
+  const how = endlessWin(sim);
+  const won = how !== null;
   const chip = $('down-chip');
   chip.className = won ? 'chip' : 'chip bad';
   chip.textContent = `STREAK ${e.streak}`;
@@ -959,7 +990,7 @@ function renderEndlessOverGrid(sim) {
        <button type="button" class="call" id="btn-endless-menu">
          <span class="name"><span>MENU</span></span><span class="hint">Your best is saved</span>
        </button>
-       <div class="over-msg span2">Touchdown! That's ${e.streak} in a row.</div>
+       <div class="over-msg span2">${how === 'TOUCHDOWN' ? 'Touchdown!' : how === 'FG TIES IT' ? 'Field goal ties it!' : 'Field goal takes the lead!'} That's ${e.streak} in a row.</div>
        ${coachTile()}`
     : `<button type="button" class="call primary span2" id="btn-endless-go">
          <span class="name"><span>SEE RESULTS ▶</span></span><span class="hint">Final streak: ${e.streak}</span>
@@ -967,7 +998,7 @@ function renderEndlessOverGrid(sim) {
        <button type="button" class="call" id="btn-endless-menu">
          <span class="name"><span>MENU</span></span><span class="hint">Back to the menu</span>
        </button>
-       <div class="over-msg span2">No touchdown (${esc(why)}). The run ends at ${e.streak}.</div>
+       <div class="over-msg span2">${sim.result.outcome === 'fg_made' ? 'Three points, but still behind' : `No score (${esc(why)})`}. The run ends at ${e.streak}.</div>
        ${coachTile()}`;
   $('btn-endless-go').addEventListener('click', won ? onEndlessNext : showEndlessResults);
   $('btn-endless-menu').addEventListener('click', goHome);
@@ -994,7 +1025,7 @@ function showEndlessResults() {
       <td class="n">${i + 1}</td>
       <td class="callc">${esc(matchup(r.scenario))}<span class="sit-phone">${esc(r.scenario.title)}</span></td>
       <td class="sit">${esc(r.scenario.title)}</td>
-      <td class="wpa" style="color:${r.won ? GOOD : BAD}">${esc(r.won ? 'TOUCHDOWN' : r.label)}</td>
+      <td class="wpa" style="color:${r.won ? GOOD : BAD}">${esc(r.label)}</td>
     </tr>`).join('');
   const line = e.newBest ? 'New best streak!' : `Best streak: ${e.best}`;
   const pose = e.streak > 0 ? 'celebrate' : 'ready';

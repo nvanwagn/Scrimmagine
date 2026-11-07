@@ -86,6 +86,7 @@ Troubleshooting:
 - **Port 8000 already in use**: run `python -m uvicorn app.main:app --port 8001` and open http://localhost:8001.
 - **Open the game through the server, not a static file server** like VS Code Live Server. The frontend calls `/api/...` on the origin it was loaded from.
 - **No AI commentary**: without `ANTHROPIC_API_KEY` and `CLAUDE_MODEL` in `backend/.env`, the booth uses template lines. That's expected.
+- **No player names on the field or in the booth**: `backend/data/pbp.parquet` predates the name columns. Rerun `python -m scripts.download_data` and `python -m scripts.build_scenarios`.
 
 ## Run with Docker (from the repo root)
 
@@ -107,7 +108,7 @@ Then open http://localhost:8000. Pass a new `DATA_DATE` to rebuild with a fresh 
 | GET | `/api/games/{game_id}/turning-points` | `limit` (default 5) | `Scenario` list for that game |
 | GET | `/api/endless/next` | none | a random `Scenario` for endless mode |
 | POST | `/api/simulate` | `state`, `call` | `SimulateResponse` |
-| POST | `/api/commentary` | `state_before`, `call`, `result`, `wp_before`, `wp_after` | `Commentary` |
+| POST | `/api/commentary` | `state_before`, `call`, `result`, `wp_before`, `wp_after`, `players` (optional) | `Commentary` |
 
 Interactive docs: http://localhost:8000/docs. Sprites: http://localhost:8000/sprites/crimson_ready.png
 
@@ -148,3 +149,4 @@ curl -X POST http://localhost:8000/api/commentary -H "Content-Type: application/
 - **Field goals:** the attempt distance is yardline_100 + 17. A real kick is sampled from within 3 yards of that distance (or from the 30 nearest kicks if there are too few). A miss gives the ball back at the spot of the kick, or the 20, whichever is better for the defense.
 - **Thin buckets:** when a bucket has fewer than 30 plays, drop the field zone, then merge neighbouring distance buckets, then fall back to all plays on that down, then the whole pool. `/api/simulate` always returns a result.
 - **Claude calls:** 3 s timeout, no retries, capped at 30 a minute. On any failure we use template text. Commentary is cached for repeated situations.
+- **Endless mode:** a touchdown, or a field goal that ties the game or takes the lead, keeps the run going.

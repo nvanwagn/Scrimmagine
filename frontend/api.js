@@ -18,13 +18,14 @@ export const endlessNext = () => request('/api/endless/next');
 /** POST /api/simulate {state, call} -> SimulateResponse */
 export const simulate = (state, call) => request('/api/simulate', { state, call });
 
-/** POST /api/commentary {state_before, call, result, wp_before, wp_after} -> {line_1, line_2} */
-export const commentary = (stateBefore, sim) => request('/api/commentary', {
+/** POST /api/commentary {state_before, call, result, wp_before, wp_after, players?} -> {line_1, line_2} */
+export const commentary = (stateBefore, sim, players = null) => request('/api/commentary', {
   state_before: stateBefore,
   call: sim.result.call,
   result: sim.result,
   wp_before: sim.wp_before,
   wp_after: sim.wp_after,
+  players,
 });
 
 /**
