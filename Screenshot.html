@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Start from a screenshot</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&amp;family=VT323&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#ffcf3a}a:hover{color:#fff1b8}
+</style>
+<style>html,body{background:#070912}</style>
+</head>
+<body>
+<div style="position: relative; width: 1280px; height: 800px; background: #070912; color: #f3ead3; font-family: 'VT323', monospace; display: flex; align-items: center; justify-content: center; overflow: hidden">
+  <div aria-hidden="true" style="position: absolute; inset: 0; opacity: 0.18; display: flex; gap: 40px; padding: 60px 56px">
+    <div style="width: 470px; display: flex; flex-direction: column; gap: 22px">
+      <div style="height: 120px; background: #c8352a"></div>
+      <div style="height: 60px; background: #2c3554"></div>
+      <div style="height: 128px; background: #3b8a3a"></div>
+      <div style="height: 60px; background: #ffcf3a"></div>
+    </div>
+    <div style="flex: 1; background: #1a2035"></div>
+  </div>
+
+  <div role="dialog" aria-labelledby="ss-title" style="position: relative; width: 900px; background: #151a2c; border: 4px solid #000; box-shadow: 10px 10px 0 #000; display: flex; flex-direction: column">
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: #1a2035; border-bottom: 4px solid #000">
+      <h2 id="ss-title" style="margin: 0; font-family: 'Press Start 2P', monospace; font-size: 14px">START FROM A SCREENSHOT</h2>
+      <a href="Main.html" aria-label="Close" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: #0e1220; border: 3px solid #000; text-decoration: none">
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style="shape-rendering: crispEdges"><path d="M1 1l12 12M13 1L1 13" stroke="#f3ead3" stroke-width="3"></path></svg>
+      </a>
+    </div>
+
+    <div style="display: flex; gap: 22px; padding: 22px">
+      <div style="width: 380px; display: flex; flex-direction: column; gap: 12px">
+        <div style="position: relative; height: 214px; background: #3b8a3a; border: 4px solid #000; overflow: hidden">
+          <div style="position: absolute; top: 0; left: 0; right: 0; height: 22px; background: #0e1220; display: flex; align-items: center; gap: 8px; padding: 0 8px; font-family: 'Press Start 2P', monospace; font-size: 8px; outline: 3px solid #ffcf3a; outline-offset: -3px">
+            <span style="background: #c8352a; padding: 2px 4px">CRM 17</span><span style="background: #2f48b4; padding: 2px 4px">NVY 20</span><span>4TH 2:41</span><span style="color: #ffcf3a">4TH &amp; 2</span>
+          </div>
+          <div style="position: absolute; top: 22px; bottom: 0; left: 70px; width: 3px; background: rgba(255,255,255,0.7)"></div>
+          <div style="position: absolute; top: 22px; bottom: 0; left: 170px; width: 3px; background: rgba(255,255,255,0.7)"></div>
+          <div style="position: absolute; top: 22px; bottom: 0; left: 270px; width: 3px; background: rgba(255,255,255,0.7)"></div>
+          <img src="sprites/crimson_stance.png" alt="" style="position: absolute; left: 160px; top: 100px; width: 30px; height: 36px; image-rendering: pixelated">
+          <img src="sprites/crimson_stance.png" alt="" style="position: absolute; left: 160px; top: 136px; width: 30px; height: 36px; image-rendering: pixelated">
+          <img src="sprites/crimson_ready.png" alt="" style="position: absolute; left: 120px; top: 118px; width: 30px; height: 36px; image-rendering: pixelated">
+          <img src="sprites/navy_stance.png" alt="" style="position: absolute; left: 196px; top: 100px; width: 30px; height: 36px; image-rendering: pixelated; transform: scaleX(-1)">
+          <img src="sprites/navy_stance.png" alt="" style="position: absolute; left: 196px; top: 136px; width: 30px; height: 36px; image-rendering: pixelated; transform: scaleX(-1)">
+          <img src="sprites/navy_ready.png" alt="" style="position: absolute; left: 250px; top: 70px; width: 30px; height: 36px; image-rendering: pixelated; transform: scaleX(-1)">
+          <span style="position: absolute; right: 8px; bottom: 8px; font-family: 'Press Start 2P', monospace; font-size: 7px; padding: 4px 6px; background: #ffcf3a; color: #0e1220">SCORE BUG FOUND</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 20px; color: #a9b0c8"><span>broadcast_frame.png · 1.2 MB</span><span>read in 6.4s</span></div>
+        <label style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 92px; border: 4px dashed #ffcf3a; color: #ffcf3a; cursor: pointer; text-align: center">
+          <span style="font-family: 'Press Start 2P', monospace; font-size: 10px">DROP ANOTHER IMAGE</span>
+          <span style="font-size: 20px; color: #c9cfe0">PNG or JPG, under 5 MB. Processed in memory, never stored.</span>
+          <input type="file" accept="image/png,image/jpeg" style="position: absolute; width: 1px; height: 1px; opacity: 0">
+        </label>
+      </div>
+
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: center; gap: 8px; font-family: 'Press Start 2P', monospace; font-size: 9px; color: #7dffa0"><span style="width: 8px; height: 8px; background: #7dffa0"></span>WE READ THIS. FIX ANYTHING THAT'S OFF.</div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+          
+            <label style="display: flex; flex-direction: column; gap: 4px">
+              <span style="font-family: 'Press Start 2P', monospace; font-size: 8px; color: #a9b0c8">AWAY</span>
+              <input value="CRM" style="min-height: 40px; box-sizing: border-box; padding: 0 10px; background: #0e1220; color: #f3ead3; border: 3px solid #2c3554; font-family: 'VT323', monospace; font-size: 24px; outline-color: #ffcf3a">
+            </label>
+          
+            <label style="display: flex; flex-direction: column; gap: 4px">
+              <span style="font-family: 'Press Start 2P', monospace; font-size: 8px; color: #a9b0c8">AWAY PTS</span>
+              <input value="17" style="min-height: 40px; box-sizing: border-box; padding: 0 10px; background: #0e1220; color: #f3ead3; border: 3px solid #2c3554; font-family: 'VT323', monospace; font-size: 24px; outline-color: #ffcf3a">
+            </label>
+          
+            <label style="display: flex; flex-direction: column; gap: 4px">
+              <span style="font-family: 'Press Start 2P', monospace; font-size: 8px; color: #a9b0c8">QUARTER</span>
+              <input value="4" style="min-height: 40px; box-sizing: border-box; padding: 0 10px; background: #0e1220; color: #f3ead3; border: 3px solid #2c3554; font-family: 'VT323', monospace; font-size: 24px; outline-color: #ffcf3a">
+            </label>
+          
+            <label style="display: flex; flex-direction: column; gap: 4px">
+              <span style="font-family: 'Press Start 2P', monospace; font-size: 8px; color: #a9b0c8">HOME</span>
+              <input value="NVY" style="min-height: 40px; box-sizing: border-box; padding: 0 10px; background: #0e1220; color: #f3ead3; border: 3px solid #2c3554; font-family: 'VT323', monospace; font-size: 24px; outline-color: #ffcf3a">
+            </label>
+          
+            <label style="display: flex; flex-direction: column; gap: 4px">
+              <span style="font-family: 'Press Start 2P', monospace; font-size: 8px; color: #a9b0c8">HOME PTS</span>
+              <input value="20" style="min-height: 40px; box-sizing: border-box; padding: 0 10px; background: #0e1220; color: #f3ead3; border: 3px solid #2c3554; font-family: 'VT323', monospace; font-size: 24px; outline-color: #ffcf3a">
+            </label>
+          
+            <label style="display: flex; flex-direction: column; gap: 4px">
+              <span style="font-family: 'Press Start 2P', monospace; font-size: 8px; color: #a9b0c8">CLOCK</span>
+              <input value="2:41" style="min-height: 40px; box-sizing: border-box; padding: 0 10px; background: #0e1220; color: #f3ead3; border: 3px solid #2c3554; font-family: 'VT323', monospace; font-size: 24px; outline-color: #ffcf3a">
+            </label>
+          
+            <label style="display: flex; flex-direction: column; gap: 4px">
+              <span style="font-family: 'Press Start 2P', monospace; font-size: 8px; color: #a9b0c8">DOWN</span>
+              <input value="4" style="min-height: 40px; box-sizing: border-box; padding: 0 10px; background: #0e1220; color: #f3ead3; border: 3px solid #2c3554; font-family: 'VT323', monospace; font-size: 24px; outline-color: #ffcf3a">
+            </label>
+          
+            <label style="display: flex; flex-direction: column; gap: 4px">
+              <span style="font-family: 'Press Start 2P', monospace; font-size: 8px; color: #a9b0c8">TO GO</span>
+              <input value="2" style="min-height: 40px; box-sizing: border-box; padding: 0 10px; background: #0e1220; color: #f3ead3; border: 3px solid #2c3554; font-family: 'VT323', monospace; font-size: 24px; outline-color: #ffcf3a">
+            </label>
+          
+            <label style="display: flex; flex-direction: column; gap: 4px">
+              <span style="font-family: 'Press Start 2P', monospace; font-size: 8px; color: #a9b0c8">BALL</span>
+              <input value="CRM" style="min-height: 40px; box-sizing: border-box; padding: 0 10px; background: #0e1220; color: #f3ead3; border: 3px solid #2c3554; font-family: 'VT323', monospace; font-size: 24px; outline-color: #ffcf3a">
+            </label>
+          
+        </div>
+        <div style="background: #1f2640; border: 3px solid #000; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px">
+          <span style="font-family: 'Press Start 2P', monospace; font-size: 9px; color: #ffcf3a">MATCHED PLAY</span>
+          <span style="font-size: 22px; line-height: 1">CRM ball, 4th &amp; 2 at the NVY 38. Matched on teams, quarter, clock (±5s), down and score.</span>
+        </div>
+        <div style="display: flex; gap: 12px; margin-top: auto">
+          <a href="Gameplay.html" style="flex: 1; display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 0 18px; background: #ffcf3a; color: #0e1220; border: 4px solid #000; box-shadow: 0 5px 0 #000; font-family: 'Press Start 2P', monospace; font-size: 12px; text-decoration: none"><span>CONFIRM &amp; PLAY</span><span>▶</span></a>
+          <a href="Main.html" style="display: flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 18px; background: #1a2035; color: #f3ead3; border: 4px solid #000; box-shadow: 0 5px 0 #000; font-family: 'Press Start 2P', monospace; font-size: 10px; text-decoration: none">CANCEL</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
