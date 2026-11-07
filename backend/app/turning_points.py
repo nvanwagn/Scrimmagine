@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 
 from app.ai import down_text, generate_intro
-from app.models import GameState, PlayCall, RealPlay, Scenario
+from app.models import GameState, OffensePlayers, PlayCall, RealPlay, Scenario
 
 REAL_PLAY_TYPES = ["run", "pass", "punt", "field_goal"]
 COACH_ONLY_CALLS = {"qb_kneel": "kneel", "qb_spike": "spike"}   # real calls the player can't make
@@ -131,6 +131,27 @@ def scenario_title(state: GameState) -> str:
     return f"{down_text(state).upper()}, {score}"
 
 
+# ---------- the offense's skill players in that game ----------
+
+def most_frequent(names: pd.Series, exclude: str | None = None) -> str | None:
+    """The most common non-null name (ties go to whoever appears first), skipping `exclude`."""
+    names = names.dropna()
+    if exclude is not None:
+        names = names[names != exclude]
+    return str(names.value_counts(sort=True).index[0]) if not names.empty else None
+
+
+def offense_players(game: pd.DataFrame, team: str) -> OffensePlayers:
+    """The team's QB, RB and top target in this game. Missing name columns give None."""
+    ours = game[game["posteam"] == team]
+
+    def pick(column: str, exclude: str | None = None) -> str | None:
+        return most_frequent(ours[column], exclude) if column in ours else None
+
+    qb = pick("passer_player_name")
+    return OffensePlayers(qb=qb, rb=pick("rusher_player_name", exclude=qb), wr=pick("receiver_player_name"))
+
+
 def build_scenario(game: pd.DataFrame, play: pd.Series, intro: str, win_prob: WinProbFn) -> Scenario:
     """Turn one drive-start play into a Scenario, with the real drive scored by our model."""
     state = state_from_row(play)
@@ -140,7 +161,7 @@ def build_scenario(game: pd.DataFrame, play: pd.Series, intro: str, win_prob: Wi
         title=scenario_title(state), intro=intro, start_state=state,
         real_call=real_call_from_row(play), real_play_desc=str(play["desc"]),
         real_drive_wpa=drive_wpa, leverage_score=round(float(play["leverage_score"]), 4),
-        real_drive_plays=plays,
+        real_drive_plays=plays, offense_players=offense_players(game, play["posteam"]),
     )
 
 

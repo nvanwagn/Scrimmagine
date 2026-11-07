@@ -16,6 +16,7 @@ COLUMNS = [
     "defteam_timeouts_remaining", "play_type", "pass_length", "yards_gained", "touchdown",
     "interception", "fumble_lost", "sack", "field_goal_result", "kick_distance", "wp", "wpa",
     "desc", "drive", "total_home_score", "total_away_score", "result",
+    "passer_player_name", "rusher_player_name", "receiver_player_name",   # e.g. "D.Prescott"
 ]
 
 

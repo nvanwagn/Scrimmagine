@@ -49,7 +49,8 @@ export class Field {
     this.staticLayer = el('div', 'f-static');
     this.markLayer = el('div', 'f-marks');
     this.actorLayer = el('div', 'f-actors');
-    this.world.append(this.staticLayer, this.markLayer, this.actorLayer);
+    this.tagLayer = el('div', 'f-tags');   // name tags draw above every player
+    this.world.append(this.staticLayer, this.markLayer, this.actorLayer, this.tagLayer);
     this.vp.prepend(this.world);
     this.actors = [];
     this.ball = null;
@@ -181,8 +182,11 @@ export class Field {
 
   // ---------- actors ----------
 
-  /** Lay out both teams in the mockup formation at the line of scrimmage. */
-  setup(state, kits, endZones) {
+  /**
+   * Lay out both teams in the mockup formation at the line of scrimmage.
+   * `names` = {qb, rb, wr1} name tags for offensive players (any may be missing).
+   */
+  setup(state, kits, endZones, names = {}) {
     this.kits = kits;
     this.endZones = endZones;
     this.measure();
@@ -192,6 +196,8 @@ export class Field {
     const toX = left => los + (left + f.w / 2 - f.los) / f.ppy;
     const toY = top => (top + f.sh / 2) / f.h;
     this.actorLayer.innerHTML = '';
+    this.tagLayer.innerHTML = '';
+    this.tagLayer.classList.remove('no-names');
     this.actors = [];
     for (const side of ['off', 'def']) {
       for (const [role, pose, left, tops] of f[side]) {
@@ -201,6 +207,12 @@ export class Field {
           a.img.draggable = false;
           if (side === 'def') a.img.className = 'mirror';
           a.el.append(a.img);
+          // One tag per named role (the formation has a single qb, rb and wr1).
+          if (side === 'off' && names[role]) {
+            a.tag = el('span', 'name-tag');
+            a.tag.textContent = names[role];
+            this.tagLayer.append(a.tag);
+          }
           this.actorLayer.append(a.el);
           this.actors.push(a);
         }
@@ -241,6 +253,11 @@ export class Field {
       s.width = `${w}px`; s.height = `${h}px`;
       s.transform = `translate(${(this.px(a.x) - w / 2).toFixed(1)}px, ${(a.y * this.H - h / 2).toFixed(1)}px)`;
       s.zIndex = String(10 + Math.round(a.y * 100));
+      if (a.tag) {
+        // Just under the sprite, right-aligned to it so it trails back toward the
+        // offense's own end zone instead of running into the line of scrimmage.
+        a.tag.style.transform = `translate(${(this.px(a.x) + w / 2).toFixed(1)}px, ${(a.y * this.H + h / 2 + 1).toFixed(1)}px) translateX(-100%)`;
+      }
     }
     if (this.ball) {
       const [bw, bh] = this.phone ? [12, 9] : [16, 12];
@@ -258,6 +275,8 @@ export class Field {
   play(plan) {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     for (const list of [plan.moves, plan.poses, plan.ball]) list.sort((a, b) => a.t0 - b.t0);
+    // Kicks reuse the QB and RB as holder / kicker / punter, so their name tags would lie.
+    this.tagLayer.classList.toggle('no-names', Boolean(plan.hideNames));
     return new Promise(resolve => {
       let start = null;
       const frame = now => {
@@ -375,6 +394,8 @@ export function buildPlan(f, before, sim) {
   const snapTo = (a, t1 = 150) => { arc({ x: a.x, y: a.y }, 0, t1, 6 * scale); attach(a, t1); };
 
   // ----- punt -----
+  if (r.call === 'punt' || r.call === 'field_goal') plan.hideNames = true;
+
   if (r.call === 'punt') {
     const punter = rb, land = los + r.yards, returner = f.all('s')[0];
     mv(punter, punter.x - 2, 0.5, 0, 150);

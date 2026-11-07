@@ -200,6 +200,14 @@ h1, h2, p { margin: 0; }
 .actor { position: absolute; left: 0; top: 0; }
 .actor img { width: 100%; height: 100%; display: block; filter: drop-shadow(3px 3px 0 rgba(0, 0, 0, 0.35)); }
 .actor img.mirror { transform: scaleX(-1); }
+/* Player name tags under the QB, RB and WR (offense only). */
+.f-tags { position: absolute; inset: 0; z-index: 190; pointer-events: none; }
+.name-tag {
+  position: absolute; left: 0; top: 0;
+  padding: 2px 4px; background: rgba(14, 18, 32, 0.85); color: var(--cream); border: 2px solid #000;
+  font-family: var(--pixel); font-size: 7px; line-height: 1; white-space: nowrap; pointer-events: none;
+}
+.f-tags.no-names .name-tag { display: none; }
 .ball { position: absolute; left: 0; top: 0; z-index: 180; transform-origin: center; }
 .legend {
   position: absolute; left: 16px; bottom: 16px; display: flex; gap: 10px; z-index: 300;
@@ -400,6 +408,7 @@ h1, h2, p { margin: 0; }
   .field { height: 252px; border-bottom-width: 3px; }
   .legend { display: none; }
   .actor img { filter: none; }
+  .name-tag { font-size: 6px; padding: 1px 3px; border-width: 1px; }
   .gain-chip { font-size: 9px; padding: 4px 6px; border-width: 2px; }
   .banner, .banner.fail { top: auto; bottom: 12px; padding: 10px 14px; box-shadow: 5px 5px 0 #000; border-width: 3px; }
   .banner .title, .banner.fail .title { font-size: 15px; letter-spacing: 1px; }

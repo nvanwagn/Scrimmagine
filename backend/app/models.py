@@ -87,6 +87,18 @@ class RealPlay(BaseModel):
     wpa: float
 
 
+class OffensePlayers(BaseModel):
+    """The offense's main skill players in that real game, as nflverse names ("D.Prescott").
+
+    qb = most dropbacks, rb = most carries (not counting the QB), wr = most targets
+    (play-by-play has no positions, so this can be a tight end). None if unknown.
+    """
+
+    qb: str | None = None
+    rb: str | None = None
+    wr: str | None = None
+
+
 class Scenario(BaseModel):
     """One playable starting moment from a real game.
 
@@ -104,6 +116,7 @@ class Scenario(BaseModel):
     real_drive_wpa: float
     leverage_score: float
     real_drive_plays: list[RealPlay] = Field(default_factory=list)
+    offense_players: OffensePlayers = Field(default_factory=OffensePlayers)
 
 
 class CommentaryRequest(BaseModel):

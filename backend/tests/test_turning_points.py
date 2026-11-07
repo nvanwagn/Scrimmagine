@@ -97,6 +97,24 @@ def test_drive_that_ends_the_game_uses_final_result() -> None:
     assert s.real_drive_wpa == 0.75
 
 
+def test_offense_players_from_that_game() -> None:
+    """QB = most passes, RB = most carries other than the QB, WR = most targets; the
+    other team's players and missing columns are ignored."""
+    rows = [
+        tp_play(1, 1) | {"passer_player_name": "D.Prescott", "receiver_player_name": "G.Pickens"},
+        tp_play(2, 1) | {"passer_player_name": "D.Prescott", "receiver_player_name": "C.Lamb"},
+        tp_play(3, 1) | {"passer_player_name": "D.Prescott", "receiver_player_name": "G.Pickens"},
+        tp_play(4, 1, play_type="run") | {"rusher_player_name": "D.Prescott"},   # scramble
+        tp_play(5, 1, play_type="run") | {"rusher_player_name": "D.Prescott"},
+        tp_play(6, 1, play_type="run") | {"rusher_player_name": "J.Williams"},
+        tp_play(7, 2, posteam="BBB", seconds_left=30) | {"passer_player_name": "J.Hurts", "receiver_player_name": "A.Brown"},
+    ]
+    s = scenarios_for_game(pd.DataFrame(rows), field_wp, limit=1, intro_fn=lambda state, desc: "intro")[0]
+    assert (s.offense_players.qb, s.offense_players.rb, s.offense_players.wr) == ("D.Prescott", "J.Williams", "G.Pickens")
+    bare = scenarios_for_game(pd.DataFrame([tp_play(1, 1)]), field_wp, limit=1, intro_fn=lambda state, desc: "intro")[0]
+    assert bare.offense_players.qb is None and bare.offense_players.wr is None
+
+
 def test_scenarios_built_with_first_call_and_state() -> None:
     """Scenarios carry the real first call and the pre-snap score."""
     game = pd.DataFrame([tp_play(1, 1), tp_play(2, 1), tp_play(3, 1)])

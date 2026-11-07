@@ -162,7 +162,7 @@ async function startScenario(index) {
   setOnAir('ON AIR · SETTING THE SCENE', `<p class="intro">${esc(sc.intro)}</p>`);
   $('vs-coach').textContent = '±0.0';
   $('wp-delta').hidden = true;
-  field.setup(s, kits, endZones());
+  field.setup(s, kits, endZones(), nameTags());
   renderScorebug(s);
   renderCalls(s);
   renderWpBar($('wpbar'), null);
@@ -174,6 +174,15 @@ async function startScenario(index) {
     app.game.wpNow = wp;
     if (app.game.phase === 'presnap' && !app.game.plays.length) renderWpBar($('wpbar'), wp);
   }).catch(err => console.warn('WP probe failed', err));
+}
+
+/** nflverse "D.Prescott" -> "D PRESCOTT" ("A.St. Brown" -> "A ST BROWN"). */
+const tagName = name => (name ? String(name).replace(/\./g, ' ').replace(/\s+/g, ' ').trim().toUpperCase() : null);
+
+/** Name tags for the offense's QB, RB and outside WR (the formation's wr1). */
+function nameTags() {
+  const p = app.game.scenario.offense_players || {};
+  return { qb: tagName(p.qb), rb: tagName(p.rb), wr1: tagName(p.wr) };
 }
 
 function endZones() {
@@ -383,7 +392,7 @@ async function makeCall(call) {
   g.plays.push({ before, call, sim, booth: null });
   requestBooth(i);
 
-  if (i > 0) field.setup(before, g.kits, endZones());
+  if (i > 0) field.setup(before, g.kits, endZones(), nameTags());
   $('banner').hidden = true;
   // Hold the booth lines until the animation lands so they can't spoil the result.
   setOnAir('THE BOOTH', '<p class="pending">Booth is on the mic</p>');
