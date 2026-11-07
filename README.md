@@ -1,4 +1,4 @@
-# Scrimmagine
+# Scrimmagine - Indy Init Hackathon Project
 
 Call the plays at the biggest moments of real NFL games. Each day brings 6 scenarios: the final one-possession drive of a close 2024 or 2025 game. You pick run, short pass, deep pass, punt or field goal on every snap. Each call is simulated by sampling a real NFL play from the same situation, and you're scored against the real coach's drive using win probability added (WPA). An AI broadcast booth (Claude) reacts to every call, with offline template lines when no API key is set.
 
