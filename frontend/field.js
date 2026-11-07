@@ -255,8 +255,14 @@ export class Field {
       s.zIndex = String(10 + Math.round(a.y * 100));
       if (a.tag) {
         // Just under the sprite, right-aligned to it so it trails back toward the
-        // offense's own end zone instead of running into the line of scrimmage.
-        a.tag.style.transform = `translate(${(this.px(a.x) + w / 2).toFixed(1)}px, ${(a.y * this.H + h / 2 + 1).toFixed(1)}px) translateX(-100%)`;
+        // offense's own end zone instead of running into the line of scrimmage,
+        // but never past the left edge of the visible field.
+        // Measure once (reading layout every frame would force a reflow); 0 while hidden.
+        if (!a.tagW) a.tagW = a.tag.offsetWidth;
+        const tagW = a.tagW;
+        const viewLeft = this.px(this.camX) - this.W / 2;
+        const left = Math.max(viewLeft + 2, this.px(a.x) + w / 2 - tagW);
+        a.tag.style.transform = `translate(${left.toFixed(1)}px, ${(a.y * this.H + h / 2 + 1).toFixed(1)}px)`;
       }
     }
     if (this.ball) {

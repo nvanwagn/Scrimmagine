@@ -18,7 +18,7 @@ from app.ai import generate_commentary
 from app.models import (Commentary, CommentaryRequest, Game, Scenario, SimulateRequest,
                         SimulateResponse)
 from app.simulator import simulate
-from app.turning_points import scenarios_for_game
+from app.turning_points import close_game_ids, random_endless_scenario, scenarios_for_game
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
@@ -27,6 +27,7 @@ ALLOWED_ORIGINS = ["http://localhost:8000", "http://127.0.0.1:5500"]
 store: DataStore | None = None
 rng = np.random.default_rng()
 turning_point_cache: dict[tuple[str, int], list[Scenario]] = {}  # intros are written once per game
+close_games: list[str] | None = None   # endless mode's game pool, computed on first use
 
 
 def load_env_file(path: Path) -> None:
@@ -90,6 +91,19 @@ def get_turning_points(game_id: str, limit: int = Query(5, ge=1, le=20)) -> list
     return turning_point_cache[key]
 
 
+@app.get("/api/endless/next", response_model=Scenario)
+def get_endless_next() -> Scenario:
+    """Endless mode: a random close game's one-possession drive where the offense needs a TD."""
+    global close_games
+    data = get_store()
+    if close_games is None:
+        close_games = close_game_ids(data.plays)
+    scenario = random_endless_scenario(data.plays, data.wp, rng, game_ids=close_games)
+    if scenario is None:
+        raise HTTPException(status_code=503, detail="No endless scenarios available")
+    return scenario
+
+
 @app.post("/api/simulate", response_model=SimulateResponse)
 def post_simulate(body: SimulateRequest) -> SimulateResponse:
     """Simulate one play call from a game state."""
@@ -106,5 +120,16 @@ def post_commentary(body: CommentaryRequest) -> Commentary:
 app.mount("/sprites", StaticFiles(directory=REPO_ROOT / "sprites"), name="sprites")
 if (REPO_ROOT / "sound-effects").is_dir():
     app.mount("/sound-effects", StaticFiles(directory=REPO_ROOT / "sound-effects"), name="sound-effects")
+class RevalidatedStaticFiles(StaticFiles):
+    """Static files sent with Cache-Control: no-cache. The browser still caches them but checks
+    with the server on every load (a cheap 304 when unchanged), so an updated JS module is never
+    mixed with a stale cached one, e.g. a new app.js calling a function an old api.js lacks."""
+
+    def file_response(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 if (REPO_ROOT / "frontend").is_dir():
-    app.mount("/", StaticFiles(directory=REPO_ROOT / "frontend", html=True), name="frontend")
+    app.mount("/", RevalidatedStaticFiles(directory=REPO_ROOT / "frontend", html=True), name="frontend")

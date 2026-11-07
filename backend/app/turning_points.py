@@ -7,6 +7,7 @@ and the real coach both call a whole drive, so their WPA totals are a fair compa
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
+import numpy as np
 import pandas as pd
 
 from app.ai import down_text, generate_intro
@@ -178,3 +179,40 @@ def scenarios_for_game(game: pd.DataFrame, win_prob: WinProbFn, limit: int = 5,
     with ThreadPoolExecutor(max_workers=len(points)) as pool:
         intros = list(pool.map(lambda p: intro_fn(state_from_row(p), str(p["desc"])), points))
     return [build_scenario(game, play, intro, win_prob) for play, intro in zip(points, intros)]
+
+
+# ---------- endless mode ----------
+
+ENDLESS_TRIES = 60   # random close games to look through before giving up
+
+
+def close_game_ids(plays: pd.DataFrame) -> list[str]:
+    """Games decided by one score or less (final margin <= 8), sorted for repeatability."""
+    margins = plays.groupby("game_id")["result"].first().abs()
+    return sorted(margins[margins <= ONE_POSSESSION].index)
+
+
+def needs_touchdown(starts: pd.DataFrame) -> pd.DataFrame:
+    """Drive starts where the offense is tied or trailing, so a touchdown is the goal."""
+    home = starts["posteam"] == starts["home_team"]
+    ours = starts["home_score_pre"].where(home, starts["away_score_pre"])
+    theirs = starts["away_score_pre"].where(home, starts["home_score_pre"])
+    return starts[ours <= theirs]
+
+
+def random_endless_scenario(plays: pd.DataFrame, win_prob: WinProbFn, rng: np.random.Generator,
+                            intro_fn: IntroFn = generate_intro,
+                            game_ids: list[str] | None = None) -> Scenario | None:
+    """A random close game's last one-possession drive where the offense needs a touchdown.
+
+    Uses the same drive rules as the daily set (find_turning_points); None if no game qualifies.
+    """
+    ids = game_ids if game_ids is not None else close_game_ids(plays)
+    for game_id in rng.permutation(ids)[:ENDLESS_TRIES]:
+        game = plays[plays["game_id"] == game_id]
+        candidates = needs_touchdown(find_turning_points(game, limit=10))
+        if candidates.empty:
+            continue
+        play = candidates.iloc[-1]
+        return build_scenario(game, play, intro_fn(state_from_row(play), str(play["desc"])), win_prob)
+    return None

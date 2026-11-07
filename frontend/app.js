@@ -23,10 +23,11 @@ const app = {
   played: loadPlayed(),       // scenario id -> {grade, you, coach} (this browser only)
   game: null,                 // the scenario being played
   busy: false,
+  endless: { streak: 0, rounds: [], best: 0, newBest: false, next: null },
 };
 
 const $ = id => document.getElementById(id);
-const screens = { home: $('screen-home'), game: $('screen-game'), summary: $('screen-summary'), final: $('screen-final') };
+const screens = { home: $('screen-home'), game: $('screen-game'), summary: $('screen-summary'), final: $('screen-final'), endless: $('screen-endless') };
 const field = new Field($('field'));
 
 // ---------- formatting ----------
@@ -113,6 +114,7 @@ async function loadHome() {
 }
 
 function renderHome() {
+  renderEndlessButton();
   const list = $('scenario-list');
   if (!app.scenarios.length) {
     list.innerHTML = '<p class="muted loading">No scenarios today. Run scripts.build_scenarios on the server.</p>';
@@ -143,15 +145,20 @@ function renderHome() {
 
 // ---------- gameplay ----------
 
-async function startScenario(index) {
+/** Start one of today's 6 by its position in the list. */
+function startScenario(index) {
   const sc = app.scenarios[index];
-  if (!sc) return;
+  return sc ? startGame(sc, { mode: 'daily', index }) : undefined;
+}
+
+/** Start a drive from any scenario. mode is 'daily' (index = position in today's 6) or 'endless'. */
+async function startGame(sc, { mode, index = null }) {
   const s = sc.start_state;
   const kits = kitsFor(s.offense, s.defense);
   await Promise.all([loadSprites(kits.off), loadSprites(kits.def)]);
   app.game = {
     token: Symbol('game'),
-    index, scenario: sc, kits,
+    mode, index, scenario: sc, kits,
     team: s.offense, opp: s.defense,
     state: s, wpNow: null, plays: [], phase: 'presnap', shown: -1,
   };
@@ -220,7 +227,7 @@ function renderScorebug(s, opts = {}) {
     <div class="sb-clock"><span class="q"><span class="long">${quarterLong(s)}</span><span class="short">${quarterShort(s)}</span></span><span class="t">${clock(s)}</span></div>
     <div class="sb-down${downCls}">${esc(downLabel)}</div>
     <div class="sb-spot">${esc(spotLabel)}</div>
-    <div class="sb-right">${esc(opts.right || `SCENARIO ${g.index + 1} / ${app.scenarios.length}`)}</div>`;
+    <div class="sb-right">${esc(opts.right || (g.mode === 'endless' ? `ENDLESS · STREAK ${app.endless.streak}` : `SCENARIO ${g.index + 1} / ${app.scenarios.length}`))}</div>`;
   const db = $('downbar');
   db.className = `downbar${downCls}`;
   db.innerHTML = `<span>${esc(downLabel)}</span><span>${esc(spotLabel)}</span>`;
@@ -338,6 +345,7 @@ function coachTile() {
 
 /** Same grid slots once the drive ends: summary, try again, the verdict and the coach tile. */
 function renderOverGrid(sim) {
+  if (app.game.mode === 'endless') return renderEndlessOverGrid(sim);
   const chip = $('down-chip');
   chip.className = FAIL_OUTCOMES.has(sim.result.outcome) ? 'chip bad' : 'chip';
   chip.textContent = driveEndLabel(sim);
@@ -405,7 +413,10 @@ async function makeCall(call) {
   g.state = sim.new_state;
   g.wpNow = sim.wp_after;
   g.phase = sim.drive_over ? 'over' : 'presnap';
-  if (sim.drive_over) recordGrade();
+  if (sim.drive_over) {
+    if (g.mode === 'endless') recordEndlessRound(sim);
+    else recordGrade();
+  }
   showResult(i);
   app.busy = false;
 }
@@ -857,7 +868,184 @@ function goHome() {
   show('home');
 }
 
+// ---------- endless mode ----------
+// Random one-possession drives where you need a touchdown. Score one and the next random
+// game loads; anything else ends the run. The score is how many you win in a row.
+
+const BEST_KEY = 'scrimmagine.endlessBest';
+
+function loadBest() {
+  try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch { return 0; }
+}
+function saveBest(n) {
+  try { localStorage.setItem(BEST_KEY, String(n)); } catch { /* storage unavailable */ }
+}
+
+/** Fetch a round; never rejects, so a prefetch nobody awaits can't raise an unhandled error. */
+// Promise.resolve().then(...) also turns a synchronous throw (e.g. a stale cached api.js
+// without endlessNext) into {error}, instead of a rejection that leaves "LOADING…" forever.
+const fetchEndlessRound = () => Promise.resolve()
+  .then(() => api.endlessNext())
+  .then(sc => ({ sc }), error => ({ error }));
+
+async function startEndless() {
+  app.endless = { streak: 0, rounds: [], best: loadBest(), newBest: false, next: null };
+  const btn = $('btn-endless');
+  btn.disabled = true;
+  btn.querySelector('.label').textContent = 'LOADING…';
+  $('home-error').hidden = true;
+  let ok = false;
+  try {
+    ok = await nextEndlessRound();
+  } finally {
+    btn.disabled = false;   // whatever happens, the button never stays on LOADING…
+    renderEndlessButton();
+  }
+  if (!ok) {
+    show('home');   // errors are shown on the menu (also when starting from the results screen)
+    $('home-error').textContent = "Couldn't load an endless game. Is the server running?";
+    $('home-error').hidden = false;
+  }
+}
+
+/** Load the next round (prefetched if ready) and start it; prefetch the one after. */
+async function nextEndlessRound() {
+  const e = app.endless;
+  const pending = e.next || fetchEndlessRound();
+  e.next = null;
+  const { sc, error } = await pending;
+  if (error) {
+    console.warn('Endless round failed to load', error);
+    return false;
+  }
+  e.next = fetchEndlessRound();
+  try {
+    await startGame(sc, { mode: 'endless' });
+  } catch (err) {
+    console.warn('Endless round failed to start', err);
+    return false;
+  }
+  return true;
+}
+
+/** Called when an endless drive ends: a touchdown extends the streak, anything else ends the run. */
+function recordEndlessRound(sim) {
+  const e = app.endless;
+  const won = sim.result.outcome === 'touchdown';
+  e.rounds.push({ scenario: app.game.scenario, won, label: driveEndLabel(sim) });
+  if (!won) return;
+  e.streak += 1;
+  if (e.streak > e.best) {
+    e.best = e.streak;
+    e.newBest = true;
+    saveBest(e.best);   // saved right away, so leaving mid-run keeps it
+  }
+}
+
+function renderEndlessOverGrid(sim) {
+  const e = app.endless;
+  const won = sim.result.outcome === 'touchdown';
+  const chip = $('down-chip');
+  chip.className = won ? 'chip' : 'chip bad';
+  chip.textContent = `STREAK ${e.streak}`;
+  $('calls-title').textContent = won ? 'ROUND WON' : 'RUN OVER';
+  const why = driveEndLabel(sim).toLowerCase();
+  const grid = $('calls');
+  grid.className = 'calls over';
+  grid.innerHTML = won
+    ? `<button type="button" class="call primary span2" id="btn-endless-go">
+         <span class="name"><span>NEXT GAME ▶</span></span><span class="hint">Streak: ${e.streak}. Keep it going.</span>
+       </button>
+       <button type="button" class="call" id="btn-endless-menu">
+         <span class="name"><span>MENU</span></span><span class="hint">Your best is saved</span>
+       </button>
+       <div class="over-msg span2">Touchdown! That's ${e.streak} in a row.</div>
+       ${coachTile()}`
+    : `<button type="button" class="call primary span2" id="btn-endless-go">
+         <span class="name"><span>SEE RESULTS ▶</span></span><span class="hint">Final streak: ${e.streak}</span>
+       </button>
+       <button type="button" class="call" id="btn-endless-menu">
+         <span class="name"><span>MENU</span></span><span class="hint">Back to the menu</span>
+       </button>
+       <div class="over-msg span2">No touchdown (${esc(why)}). The run ends at ${e.streak}.</div>
+       ${coachTile()}`;
+  $('btn-endless-go').addEventListener('click', won ? onEndlessNext : showEndlessResults);
+  $('btn-endless-menu').addEventListener('click', goHome);
+  $('btn-endless-go').focus({ preventScroll: true });
+}
+
+async function onEndlessNext() {
+  const btn = $('btn-endless-go');
+  btn.disabled = true;
+  $('call-error').hidden = true;
+  if (!(await nextEndlessRound())) {
+    btn.disabled = false;
+    $('call-error').textContent = "Couldn't load the next game. Try again.";
+    $('call-error').hidden = false;
+  }
+}
+
+function showEndlessResults() {
+  const e = app.endless;
+  if (app.game) app.game.token = Symbol('finished');
+  app.game = null;
+  e.next = null;   // a fresh run fetches its own first round
+  const rows = e.rounds.map((r, i) => `<tr>
+      <td class="n">${i + 1}</td>
+      <td class="callc">${esc(matchup(r.scenario))}<span class="sit-phone">${esc(r.scenario.title)}</span></td>
+      <td class="sit">${esc(r.scenario.title)}</td>
+      <td class="wpa" style="color:${r.won ? GOOD : BAD}">${esc(r.won ? 'TOUCHDOWN' : r.label)}</td>
+    </tr>`).join('');
+  const line = e.newBest ? 'New best streak!' : `Best streak: ${e.best}`;
+  const pose = e.streak > 0 ? 'celebrate' : 'ready';
+  const turf = ['crimson', 'navy', 'forest', 'midnight']
+    .map((c, i) => `<img${i === 1 || i === 2 ? ' class="big"' : ''} src="/sprites/${c}_${pose}.png" alt="">`).join('');
+  $('endless-body').innerHTML = `
+    <div class="sum-head">
+      <div class="sum-title">
+        <span class="crumbs">ENDLESS MODE</span>
+        <h1 id="endless-title" style="text-shadow:4px 4px 0 #c8352a">RUN OVER</h1>
+      </div>
+    </div>
+    <div class="sum-body">
+      <div class="sum-left">
+        <div class="panel grade-card">
+          <span class="lbl">FINAL STREAK</span>
+          <span class="grade">${e.streak}</span>
+          <span class="grade-line">${e.streak === 1 ? '1 game won in a row.' : `${e.streak} games won in a row.`} ${esc(line)}</span>
+          <div class="grade-turf">${turf}</div>
+        </div>
+        <div class="sum-actions">
+          <button type="button" class="btn btn-primary btn-big" id="btn-endless-again"><span>PLAY AGAIN</span><span aria-hidden="true">▶</span></button>
+          <button type="button" class="btn" id="btn-endless-home">MENU</button>
+        </div>
+      </div>
+      <div class="sum-right">
+        <div class="panel log">
+          <h2>GAME BY GAME</h2>
+          <table>
+            <thead><tr><th class="n">#</th><th>MATCHUP</th><th class="sit">SITUATION</th><th style="text-align:right">RESULT</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  $('btn-endless-again').addEventListener('click', e => { e.currentTarget.disabled = true; startEndless(); });
+  $('btn-endless-home').addEventListener('click', goHome);
+  show('endless');
+  playSfx(e.newBest ? 'win' : 'game_over');
+  $('btn-endless-again').focus({ preventScroll: true });
+}
+
+function renderEndlessButton() {
+  const best = loadBest();
+  $('btn-endless').querySelector('.label').textContent = 'ENDLESS';
+  $('endless-best').textContent = best ? `BEST ${best}` : '';
+}
+
 // ---------- events ----------
+
+$('btn-endless').addEventListener('click', startEndless);
 
 $('scenario-list').addEventListener('click', e => {
   const card = e.target.closest('.scenario-card');
@@ -898,5 +1086,6 @@ wireSlider('vol-sfx', 'vol-sfx-out', () => getVolumes().sfx, setSfxVolume, () =>
 wireSlider('vol-music', 'vol-music-out', () => getVolumes().music, setMusicVolume);
 $('btn-settings').addEventListener('click', () => $('settings').showModal());
 
+renderEndlessButton();
 show('home'); // also starts the menu music (or arms it for the first click if autoplay is blocked)
 loadHome();

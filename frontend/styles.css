@@ -297,6 +297,7 @@ h1, h2, p { margin: 0; }
 .call.busy { opacity: 0.7; }
 .call.primary { background: var(--gold); color: var(--bg); }
 .call.primary:hover:not(:disabled) { background: var(--gold-hover); }
+.call.primary .hint, .call.primary:disabled .hint { color: var(--bg); }
 .span2 { grid-column: span 2; }
 .over-msg { display: flex; align-items: center; padding: 8px 4px; font-size: 21px; line-height: 1.05; color: var(--soft); }
 .coach-tease {
@@ -317,7 +318,7 @@ h1, h2, p { margin: 0; }
 .call-error { color: var(--bad); font-size: 20px; flex: none; }
 
 /* ---------- summary ---------- */
-#summary-body, #final-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+#summary-body, #final-body, #endless-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .sum-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 26px 40px 0; flex-wrap: wrap; }
 .sum-head .crumbs { font-family: var(--pixel); font-size: 10px; color: var(--muted); line-height: 1.6; }
 .sum-head h1 { font-family: var(--pixel); font-size: 30px; color: var(--cream); line-height: 1.3; }

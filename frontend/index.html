@@ -30,12 +30,13 @@
         <button type="button" class="btn btn-primary btn-big" id="btn-play-all"><span>PLAY TODAY'S 6</span><span aria-hidden="true">▶</span></button>
         <div class="two-col">
           <button type="button" class="btn" id="btn-random">RANDOM MOMENT</button>
-          <button type="button" class="btn" disabled>ENDLESS <span class="soon">SOON</span></button>
+          <button type="button" class="btn" id="btn-endless"><span class="label">ENDLESS</span> <span class="soon" id="endless-best"></span></button>
         </div>
         <button type="button" class="btn btn-dashed" disabled>
           <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h3l2-2h4l2 2h3v10H2z M9 7a3 3 0 1 0 0.01 0" fill="none" stroke="currentColor" stroke-width="2"></path></svg>
           START FROM A SCREENSHOT <span class="soon">SOON</span>
         </button>
+        <p class="call-error" id="home-error" role="alert" hidden></p>
       </div>
     </div>
     <div class="panel scenario-panel">
@@ -117,6 +118,12 @@
 <section id="screen-summary" class="screen summary" hidden aria-labelledby="summary-title">
   <div class="turf-strip"></div>
   <div id="summary-body"></div>
+</section>
+
+<!-- ============ ENDLESS RESULTS ============ -->
+<section id="screen-endless" class="screen summary" hidden aria-labelledby="endless-title">
+  <div class="turf-strip"></div>
+  <div id="endless-body"></div>
 </section>
 
 <!-- ============ FINAL (after the last scenario) ============ -->

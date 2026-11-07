@@ -123,3 +123,26 @@ def test_scenarios_built_with_first_call_and_state() -> None:
     assert (s.start_state.offense_score, s.start_state.defense_score) == (3, 7)
     assert s.title == "1ST & 10, DOWN 4" and s.intro == "intro"
     assert len(s.real_drive_plays) == 3
+
+
+def test_endless_picks_a_drive_that_needs_a_touchdown() -> None:
+    """Only drives where the offense is tied or trailing; the latest one in the game."""
+    import numpy as np
+    from app.turning_points import random_endless_scenario
+    game = pd.DataFrame([
+        tp_play(1, 1, seconds_left=900, home=7, away=3),                    # AAA (away) down 4 -> eligible
+        tp_play(2, 2, posteam="BBB", seconds_left=600, home=7, away=3),     # BBB (home) up 4 -> not
+        tp_play(3, 3, seconds_left=300, home=10, away=10),                  # AAA tied -> eligible, latest
+        tp_play(4, 4, posteam="BBB", seconds_left=120, home=10, away=10),   # BBB tied -> eligible, latest overall
+    ])
+    s = random_endless_scenario(game, field_wp, np.random.default_rng(0), intro_fn=lambda st, d: "intro")
+    assert s.id == "2024_01_AAA_BBB_4"
+    leading_only = pd.DataFrame([tp_play(1, 1, home=3, away=7)])          # AAA (away) up 4
+    assert random_endless_scenario(leading_only, field_wp, np.random.default_rng(0), intro_fn=lambda st, d: "intro") is None
+
+
+def test_close_game_pool() -> None:
+    """Endless draws from games decided by 8 or fewer."""
+    from app.turning_points import close_game_ids
+    plays = pd.DataFrame([tp_play(1, 1, result=8) | {"game_id": "G1"}, tp_play(1, 1, result=-9) | {"game_id": "G2"}])
+    assert close_game_ids(plays) == ["G1"]

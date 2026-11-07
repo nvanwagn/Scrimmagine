@@ -12,6 +12,9 @@ async function request(path, body) {
 /** GET /api/scenarios -> Scenario[] */
 export const getScenarios = () => request('/api/scenarios');
 
+/** GET /api/endless/next -> a random Scenario where the offense needs a touchdown */
+export const endlessNext = () => request('/api/endless/next');
+
 /** POST /api/simulate {state, call} -> SimulateResponse */
 export const simulate = (state, call) => request('/api/simulate', { state, call });
 
