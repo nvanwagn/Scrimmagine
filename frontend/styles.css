@@ -277,7 +277,7 @@ h1, h2, p { margin: 0; }
 .call-error { color: var(--bad); font-size: 20px; flex: none; }
 
 /* ---------- summary ---------- */
-#summary-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+#summary-body, #final-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .sum-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 26px 40px 0; flex-wrap: wrap; }
 .sum-head .crumbs { font-family: var(--pixel); font-size: 10px; color: var(--muted); line-height: 1.6; }
 .sum-head h1 { font-family: var(--pixel); font-size: 30px; color: var(--cream); line-height: 1.3; }
@@ -421,8 +421,7 @@ h1, h2, p { margin: 0; }
   .vs { grid-template-columns: 1fr; }
   .log { padding: 12px 10px; overflow: visible; }
   .log table { font-size: 19px; }
-  .log .n, .log .sit, .log th.sit, .log th.n, .log .coachc, .log th:nth-child(6) { display: none; }
-  .coach-log th:nth-child(5) { display: table-cell; }
+  .log .n, .log .sit, .log .coachc { display: none; }
   .log .callc { font-size: 8px; }
   .sit-phone { display: block; font-family: var(--body); font-size: 17px; color: var(--muted); margin-top: 4px; }
   .log .wpa { font-size: 9px; }

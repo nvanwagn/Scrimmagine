@@ -3,6 +3,7 @@
 import * as api from './api.js';
 import { Field, buildPlan } from './field.js';
 import { kitsFor, loadSprites, spritesNow, mix, textOn } from './sprites.js';
+import { playSfx, startMusic, stopMusic } from './sound.js';
 
 // ---------- constants ----------
 
@@ -18,13 +19,13 @@ const GOOD = '#7dffa0', BAD = '#ff8f84';
 
 const app = {
   scenarios: [],
-  played: loadPlayed(),       // scenario id -> grade (this browser only)
+  played: loadPlayed(),       // scenario id -> {grade, you, coach} (this browser only)
   game: null,                 // the scenario being played
   busy: false,
 };
 
 const $ = id => document.getElementById(id);
-const screens = { home: $('screen-home'), game: $('screen-game'), summary: $('screen-summary') };
+const screens = { home: $('screen-home'), game: $('screen-game'), summary: $('screen-summary'), final: $('screen-final') };
 const field = new Field($('field'));
 
 // ---------- formatting ----------
@@ -84,6 +85,8 @@ function savePlayed() {
 function show(name) {
   for (const [k, el] of Object.entries(screens)) el.hidden = k !== name;
   window.scrollTo(0, 0);
+  // The menu music plays only on the menu.
+  if (name === 'home') startMusic(); else stopMusic();
 }
 
 // ---------- home ----------
@@ -119,8 +122,8 @@ function renderHome() {
     const s = sc.start_state;
     const k = kitsFor(s.offense, s.defense);
     const pips = Math.max(1, Math.ceil((sc.leverage_score / maxLev) * 5));
-    const grade = app.played[sc.id];
-    const badge = grade ? `<span class="badge played">PLAYED ${esc(grade)}</span>` : '<span class="badge new">NEW</span>';
+    const grade = playedEntry(sc.id)?.grade;
+    const badge = grade ?`<span class="badge played">PLAYED ${esc(grade)}</span>` : '<span class="badge new">NEW</span>';
     return `<button type="button" class="scenario-card" data-index="${i}" aria-label="Scenario ${i + 1}: ${esc(matchup(sc))}, ${esc(sc.title)}, ${quarterShort(s)} ${clock(s)}">
       <div class="card-top">
         <div class="matchup">
@@ -468,6 +471,8 @@ function showResult(i) {
   banner.innerHTML = `<div class="title">${esc(title)}</div><div class="desc">${esc(r.description)}</div>`;
   banner.hidden = false;
   $('announce').textContent = `${title} ${r.description} Win probability ${pct(sim.wp_before)} to ${pct(sim.wp_after)}.`;
+  if (r.outcome === 'first_down') playSfx('first_down');
+  else if (kind === 'fail') playSfx('failed_play');
 
   // Score bug shows the new state.
   const over = sim.drive_over;
@@ -539,7 +544,26 @@ function overMessage(sim) {
 
 // ---------- summary ----------
 
-function gradeFor(diffPoints) {
+const LOCKED_WIN_WP = 0.995;   // displays as 100%
+const ONE_SCORE = 8;           // a touchdown plus a two-point conversion
+const LAST_MINUTE = 60;        // too little time for two scores (TD, onside kick, TD)
+
+/**
+ * Is the win guaranteed once the drive is over? The WP model tops out around 98-99% even
+ * for unlosable spots, so this reads the scoreboard: ahead at 0:00, or ahead by more than
+ * one score with a minute or less left.
+ */
+function winLocked(finalState, team, finalWp) {
+  const lead = finalState.offense === team
+    ? finalState.offense_score - finalState.defense_score
+    : finalState.defense_score - finalState.offense_score;
+  const secs = finalState.seconds_left_in_game;
+  return finalWp >= LOCKED_WIN_WP || (lead > 0 && secs === 0) || (lead > ONE_SCORE && secs <= LAST_MINUTE);
+}
+
+/** Letter grade from (your WPA - coach WPA) in points; a locked-up win is always an A. */
+function gradeFor(diffPoints, locked) {
+  if (locked) return 'A';
   if (diffPoints >= 10) return 'A';
   if (diffPoints >= 3) return 'B';
   if (diffPoints >= -3) return 'C';
@@ -547,11 +571,27 @@ function gradeFor(diffPoints) {
   return 'F';
 }
 
-function recordGrade() {
+/** Everything the summary and the final screen need about the finished drive. */
+function driveResult() {
   const g = app.game;
-  const diff = (yourWpa() - g.scenario.real_drive_wpa) * 100;
-  app.played[g.scenario.id] = gradeFor(diff);
+  const you = yourWpa(), coach = g.scenario.real_drive_wpa;
+  const diff = (you - coach) * 100;
+  const last = g.plays[g.plays.length - 1].sim;
+  const locked = winLocked(last.new_state, g.team, last.wp_after);
+  return { you, coach, diff, finalWp: last.wp_after, locked, grade: gradeFor(diff, locked) };
+}
+
+function recordGrade() {
+  const { grade, you, coach } = driveResult();
+  app.played[app.game.scenario.id] = { grade, you, coach };
   savePlayed();
+}
+
+/** Stored result for a scenario ({grade, you, coach}); older saves held just the letter. */
+function playedEntry(id) {
+  const v = app.played[id];
+  if (!v) return null;
+  return typeof v === 'string' ? { grade: v, you: null, coach: null } : v;
 }
 
 function resultShort(p) {
@@ -577,17 +617,17 @@ function showSummary() {
   const plays = g.plays;
   const last = plays[plays.length - 1].sim;
   const fin = last.new_state;
-  const you = yourWpa(), coach = sc.real_drive_wpa;
-  const diff = (you - coach) * 100;
-  const grade = gradeFor(diff);
+  const { you, coach, diff, locked, grade } = driveResult();
+  const isLast = g.index === app.scenarios.length - 1;
   const scoreOf = abbr => (fin.offense === abbr ? fin.offense_score : fin.defense_score);
   const teamBg = g.kits.off.ui, oppBg = g.kits.def.ui;
 
-  const gradeLine = Math.abs(diff) < 0.05
+  const versus = Math.abs(diff) < 0.05
     ? 'Dead even with the real coach.'
     : diff > 0
       ? `You beat the real coach by ${diff.toFixed(1)} points of win probability.`
       : `The real coach beat you by ${(-diff).toFixed(1)} points of win probability.`;
+  const gradeLine = locked ? `Win locked up: automatic A. ${versus}` : versus;
 
   const good = grade === 'A' || grade === 'B';
   const turfKit = grade === 'C' ? g.kits.off : good ? g.kits.off : g.kits.def;
@@ -670,7 +710,7 @@ function showSummary() {
           </div>
         </div>
         <div class="sum-actions">
-          <button type="button" class="btn btn-primary btn-big" id="btn-next"><span>NEXT SCENARIO</span><span aria-hidden="true">▶</span></button>
+          <button type="button" class="btn btn-primary btn-big" id="btn-next"><span>${isLast ? 'FINAL RESULTS' : 'NEXT SCENARIO'}</span><span aria-hidden="true">▶</span></button>
           <div class="two-col">
             <button type="button" class="btn" id="btn-replay">REPLAY</button>
             <button type="button" class="btn" id="btn-sum-menu">MENU</button>
@@ -693,7 +733,7 @@ function showSummary() {
         <div class="panel log">
           <h2>PLAY BY PLAY</h2>
           <table>
-            <thead><tr><th class="n">#</th><th class="sit">SITUATION</th><th>YOUR CALL</th><th>RESULT</th><th style="text-align:right">WPA</th><th>COACH ON PLAY #</th><th></th></tr></thead>
+            <thead><tr><th class="n">#</th><th class="sit">SITUATION</th><th>YOUR CALL</th><th>RESULT</th><th style="text-align:right">WPA</th><th class="coachc">COACH ON PLAY #</th><th></th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -706,11 +746,97 @@ function showSummary() {
         </div>` : ''}
       </div>
     </div>`;
-  $('btn-next').addEventListener('click', () => startScenario((g.index + 1) % app.scenarios.length));
+  $('btn-next').addEventListener('click', () => (isLast ? showFinal() : startScenario(g.index + 1)));
   $('btn-replay').addEventListener('click', () => startScenario(g.index));
   $('btn-sum-menu').addEventListener('click', goHome);
   show('summary');
+  if (grade === 'A' || grade === 'B') playSfx('win');
+  else if (grade === 'D' || grade === 'F') playSfx('game_over');
   $('btn-next').focus({ preventScroll: true });
+}
+
+// ---------- final screen (after the last scenario) ----------
+
+const GRADE_POINTS = { A: 4, B: 3, C: 2, D: 1, F: 0 };
+
+function averageGrade(grades) {
+  const avg = grades.reduce((sum, gr) => sum + GRADE_POINTS[gr], 0) / grades.length;
+  const letter = avg >= 3.5 ? 'A' : avg >= 2.5 ? 'B' : avg >= 1.5 ? 'C' : avg >= 0.5 ? 'D' : 'F';
+  return { letter, avg };
+}
+
+/** Today's set wrapped up: average grade and net win-probability change across the scenarios. */
+function showFinal() {
+  if (app.game) app.game.token = Symbol('finished');
+  app.game = null;
+  const results = app.scenarios.map((sc, i) => ({ sc, i, r: playedEntry(sc.id) }));
+  const played = results.filter(x => x.r);
+  const withWp = played.filter(x => x.r.you != null);
+  const net = withWp.reduce((sum, x) => sum + x.r.you, 0);
+  const netVsCoach = withWp.reduce((sum, x) => sum + (x.r.you - x.r.coach), 0);
+  const { letter, avg } = played.length ? averageGrade(played.map(x => x.r.grade)) : { letter: '-', avg: 0 };
+  const good = letter === 'A' || letter === 'B';
+  const colorways = ['crimson', 'navy', 'forest', 'midnight'];
+  const turf = colorways.map((c, i) => `<img${i === 1 || i === 2 ? ' class="big"' : ''} src="/sprites/${c}_${good ? 'celebrate' : 'ready'}.png" alt="">`).join('');
+  const color = v => (v >= 0 ? GOOD : BAD);
+
+  const rows = results.map(({ sc, i, r }) => `<tr>
+      <td class="n">${i + 1}</td>
+      <td class="callc">${esc(matchup(sc))}<span class="sit-phone">${esc(sc.title)}</span></td>
+      <td class="sit">${esc(sc.title)}</td>
+      <td class="wpa">${r ? esc(r.grade) : '<span class="muted">—</span>'}</td>
+      <td class="wpa" style="color:${r?.you != null ? color(r.you) : 'inherit'}">${r?.you != null ? pts(r.you) : '<span class="muted">—</span>'}</td>
+      <td class="wpa" style="color:${r?.you != null ? color(r.you - r.coach) : 'inherit'}">${r?.you != null ? pts(r.you - r.coach) : '<span class="muted">—</span>'}</td>
+    </tr>`).join('');
+
+  const playedNote = played.length === results.length
+    ? `All ${results.length} of today's scenarios.`
+    : `${played.length} of ${results.length} scenarios played. Unplayed ones don't count.`;
+
+  $('final-body').innerHTML = `
+    <div class="sum-head">
+      <div class="sum-title">
+        <span class="crumbs">TODAY'S ${results.length} TURNING POINTS</span>
+        <h1 id="final-title" style="text-shadow:4px 4px 0 #c8352a">FINAL RESULTS</h1>
+      </div>
+    </div>
+    <div class="sum-body">
+      <div class="sum-left">
+        <div class="panel grade-card">
+          <span class="lbl">AVERAGE GRADE</span>
+          <span class="grade">${letter}</span>
+          <span class="grade-line">${played.length ? `${avg.toFixed(1)} / 4.0 · ${esc(playedNote)}` : 'No scenarios played yet.'}</span>
+          <div class="grade-turf">${turf}</div>
+        </div>
+        <div class="sum-actions">
+          <button type="button" class="btn btn-primary btn-big" id="btn-final-again"><span>PLAY TODAY'S ${results.length} AGAIN</span><span aria-hidden="true">▶</span></button>
+          <button type="button" class="btn" id="btn-final-menu">MENU</button>
+        </div>
+      </div>
+      <div class="sum-right">
+        <div class="vs">
+          <div class="panel vs-card">
+            <div class="vs-top"><span class="who">NET WP CHANGE</span><span class="num" style="color:${color(net)}">${pts(net)}</span></div>
+            <span class="txt">Your win-probability change, added up across ${withWp.length} scenario${withWp.length === 1 ? '' : 's'}.</span>
+          </div>
+          <div class="panel vs-card coach">
+            <div class="vs-top"><span class="who">NET vs REAL COACHES</span><span class="num" style="color:${color(netVsCoach)}">${pts(netVsCoach)}</span></div>
+            <span class="txt">${netVsCoach >= 0 ? 'Ahead of' : 'Behind'} the real coaches overall, in points of win probability.</span>
+          </div>
+        </div>
+        <div class="panel log">
+          <h2>SCENARIO BY SCENARIO</h2>
+          <table>
+            <thead><tr><th class="n">#</th><th>MATCHUP</th><th class="sit">SITUATION</th><th style="text-align:right">GRADE</th><th style="text-align:right">YOUR WPA</th><th style="text-align:right">vs COACH</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  $('btn-final-again').addEventListener('click', () => startScenario(0));
+  $('btn-final-menu').addEventListener('click', goHome);
+  show('final');
+  $('btn-final-again').focus({ preventScroll: true });
 }
 
 function goHome() {
@@ -733,10 +859,19 @@ $('calls').addEventListener('click', e => {
   const b = e.target.closest('button[data-call]');
   if (b && !b.disabled) makeCall(b.dataset.call);
 });
+// Every button press clicks (capture phase, so it fires even when the handler re-renders).
+document.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (b && !b.disabled) playSfx('button');
+}, true);
 document.addEventListener('keydown', e => {
   if (screens.game.hidden || e.altKey || e.ctrlKey || e.metaKey) return;
   const n = Number(e.key);
-  if (n >= 1 && n <= 5) makeCall(CALLS[n - 1]);
+  if (!(n >= 1 && n <= 5)) return;
+  // Number keys press the call button itself, so they behave (and sound) like a click.
+  const b = document.querySelector(`#calls button[data-call="${CALLS[n - 1]}"]`);
+  if (b && !b.disabled) b.click();
 });
 
+show('home'); // also starts the menu music (or arms it for the first click if autoplay is blocked)
 loadHome();

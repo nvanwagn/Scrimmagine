@@ -104,5 +104,7 @@ def post_commentary(body: CommentaryRequest) -> Commentary:
 
 
 app.mount("/sprites", StaticFiles(directory=REPO_ROOT / "sprites"), name="sprites")
+if (REPO_ROOT / "sound-effects").is_dir():
+    app.mount("/sound-effects", StaticFiles(directory=REPO_ROOT / "sound-effects"), name="sound-effects")
 if (REPO_ROOT / "frontend").is_dir():
     app.mount("/", StaticFiles(directory=REPO_ROOT / "frontend", html=True), name="frontend")
