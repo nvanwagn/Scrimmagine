@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scrimmagine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&amp;family=VT323&amp;display=swap">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="/sprites/ball.png">
+</head>
+<body>
+
+<!-- ============ HOME ============ -->
+<section id="screen-home" class="screen home" aria-labelledby="home-title">
+  <div class="turf-strip"></div>
+  <div class="home-body">
+    <div class="home-left">
+      <div class="eyebrow">INDY INIT · HACKATHON BUILD</div>
+      <h1 id="home-title" class="logo">SCRIMMAGINE</h1>
+      <p class="pitch">Drop into the biggest moments of real NFL games. Make the call. Get graded against the coach who actually made it.</p>
+      <div class="hero-field" aria-hidden="true">
+        <div class="hero-line"></div>
+        <img src="/sprites/crimson_celebrate.png" alt="">
+        <img src="/sprites/navy_run.png" alt="">
+        <img src="/sprites/forest_throw.png" alt="">
+        <img src="/sprites/midnight_celebrate.png" alt="">
+      </div>
+      <div class="home-actions">
+        <button type="button" class="btn btn-primary btn-big" id="btn-play-all"><span>PLAY TODAY'S 6</span><span aria-hidden="true">▶</span></button>
+        <div class="two-col">
+          <button type="button" class="btn" id="btn-random">RANDOM MOMENT</button>
+          <button type="button" class="btn" disabled>ENDLESS <span class="soon">SOON</span></button>
+        </div>
+        <button type="button" class="btn btn-dashed" disabled>
+          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h3l2-2h4l2 2h3v10H2z M9 7a3 3 0 1 0 0.01 0" fill="none" stroke="currentColor" stroke-width="2"></path></svg>
+          START FROM A SCREENSHOT <span class="soon">SOON</span>
+        </button>
+      </div>
+    </div>
+    <div class="panel scenario-panel">
+      <div class="panel-head">
+        <h2>TODAY'S TURNING POINTS</h2>
+        <span class="muted">Ranked by win-prob swing · resets daily</span>
+      </div>
+      <div id="scenario-list" class="scenario-grid" aria-live="polite">
+        <p class="muted loading">Loading today's moments…</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ GAME (pre-snap + result) ============ -->
+<section id="screen-game" class="screen game" hidden aria-label="Gameplay">
+  <header class="scorebug" id="scorebug"></header>
+  <div class="downbar" id="downbar"></div>
+
+  <div class="field" id="field" aria-hidden="true">
+    <div class="legend">
+      <span><span class="swatch" style="background:#4aa3ff"></span>LINE OF SCRIMMAGE</span>
+      <span><span class="swatch" style="background:#ffcf3a"></span>LINE TO GAIN</span>
+    </div>
+    <div class="banner" id="banner" hidden></div>
+  </div>
+  <div class="sr-only" id="announce" role="status" aria-live="polite"></div>
+
+  <!-- pre-snap -->
+  <div class="presnap" id="presnap">
+    <div class="presnap-left">
+      <div class="panel onair">
+        <div class="kicker"><span class="dot"></span><span class="kicker-long">ON AIR · SETTING THE SCENE</span><span class="kicker-short">ON AIR</span></div>
+        <p id="intro"></p>
+      </div>
+      <div class="panel wp-panel">
+        <div class="wp-head"><span>WIN PROBABILITY</span><span>YOU vs COACH <span class="cream" id="vs-coach">±0.0</span></span></div>
+        <div class="wpbar" id="wpbar"></div>
+      </div>
+    </div>
+    <div class="presnap-right">
+      <div class="calls-head">
+        <h2>MAKE THE CALL</h2>
+        <span class="chip" id="down-chip"></span>
+      </div>
+      <div class="calls" id="calls"></div>
+      <p class="call-error" id="call-error" role="alert" hidden></p>
+    </div>
+  </div>
+
+  <!-- result -->
+  <div class="result" id="result" hidden>
+    <div class="result-grid">
+      <div class="panel wp-card" id="wp-card"></div>
+      <div class="panel booth" id="booth"></div>
+      <div class="panel coach-card" id="coach-card"></div>
+    </div>
+    <div class="result-actions" id="result-actions"></div>
+    <p class="call-error" id="call-error-2" role="alert" hidden></p>
+  </div>
+</section>
+
+<!-- ============ SUMMARY ============ -->
+<section id="screen-summary" class="screen summary" hidden aria-labelledby="summary-title">
+  <div class="turf-strip"></div>
+  <div id="summary-body"></div>
+</section>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
