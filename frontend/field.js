@@ -184,7 +184,7 @@ export class Field {
 
   /**
    * Lay out both teams in the mockup formation at the line of scrimmage.
-   * `names` = {qb, rb, wr1} name tags for offensive players (any may be missing).
+   * `names` = {qb, rb, wr1, slot} name tags for offensive players (any may be missing).
    */
   setup(state, kits, endZones, names = {}) {
     this.kits = kits;
@@ -207,16 +207,19 @@ export class Field {
           a.img.draggable = false;
           if (side === 'def') a.img.className = 'mirror';
           a.el.append(a.img);
-          // One tag per named role (the formation has a single qb, rb and wr1).
-          if (side === 'off' && names[role]) {
-            a.tag = el('span', 'name-tag');
-            a.tag.textContent = names[role];
-            this.tagLayer.append(a.tag);
-          }
           this.actorLayer.append(a.el);
           this.actors.push(a);
         }
       }
+    }
+    // Name tags on the four offensive players buildPlan() gives the ball to: QB, RB, the
+    // deep-pass target (outside WR) and the short-pass target (slot).
+    const tagged = { qb: this.one('qb'), rb: this.one('rb'), wr1: this.one('wr1'), slot: this.shortReceiver() };
+    for (const [key, actor] of Object.entries(tagged)) {
+      if (!names[key] || !actor || actor.tag) continue;
+      actor.tag = el('span', 'name-tag');
+      actor.tag.textContent = names[key];
+      this.tagLayer.append(actor.tag);
     }
     const [bx, by] = f.ballAt;
     this.ball = { x: los + (bx + f.ball[0] / 2 - f.los) / f.ppy, y: (by + f.ball[1] / 2) / f.h, h: 0, el: el('img', 'ball') };
@@ -242,6 +245,12 @@ export class Field {
 
   one(role) { return this.actors.find(a => a.role === role); }
   all(role) { return this.actors.filter(a => a.role === role); }
+
+  /** Who catches short passes: the (last) slot receiver, or the outside WR if there's no slot. */
+  shortReceiver() {
+    const slots = this.all('slot');
+    return slots[slots.length - 1] || this.one('wr1');
+  }
 
   render() {
     const sprites = { off: spritesNow(this.kits.off), def: spritesNow(this.kits.def) };
@@ -372,7 +381,7 @@ export function buildPlan(f, before, sim) {
   const attach = (a, t0) => a && plan.ball.push({ attach: a, t0 });
 
   const qb = f.one('qb'), rb = f.one('rb'), wr1 = f.one('wr1'), wr2 = f.one('wr2');
-  const slot = f.all('slot')[f.all('slot').length - 1] || wr1;
+  const slot = f.shortReceiver();
   const ols = f.all('ol'), dls = f.all('dl');
   const back7 = [...f.all('lb'), ...f.all('cb'), ...f.all('s')];
   const scale = f.phone ? 0.75 : 1; // arc heights are in px

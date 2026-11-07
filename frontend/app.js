@@ -186,10 +186,10 @@ async function startGame(sc, { mode, index = null }) {
 /** nflverse "D.Prescott" -> "D PRESCOTT" ("A.St. Brown" -> "A ST BROWN"). */
 const tagName = name => (name ? String(name).replace(/\./g, ' ').replace(/\s+/g, ' ').trim().toUpperCase() : null);
 
-/** Name tags for the offense's QB, RB and outside WR (the formation's wr1). */
+/** Name tags: QB, RB, top target on the outside WR (deep passes), second target in the slot (short passes). */
 function nameTags() {
   const p = app.game.scenario.offense_players || {};
-  return { qb: tagName(p.qb), rb: tagName(p.rb), wr1: tagName(p.wr) };
+  return { qb: tagName(p.qb), rb: tagName(p.rb), wr1: tagName(p.wr), slot: tagName(p.wr2) };
 }
 
 function endZones() {

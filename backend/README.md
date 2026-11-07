@@ -72,7 +72,7 @@ curl -X POST http://localhost:8000/api/commentary -H "Content-Type: application/
 
 ## Simplifications to mention to judges
 
-- **Clock:** 30 s for a run, completion or sack; 6 s for an incompletion, interception or kick; 15 s for any play in the last 2 minutes of a half.
+- **Clock:** 30 s for a run, completion or sack (15 s in the last 2 minutes of a half); 6 s for an incompletion, interception or kick, at any time.
 - **Scoring:** touchdowns are worth 7 (extra point assumed). After any score, the receiving team starts at its own 30.
 - **Safety:** the API has no `safety` outcome, so it is reported as `turnover` with "SAFETY!" in the description. The defense gets 2 points and receives at its own 40.
 - **Punts:** net yards come from where the receiving team's next real snap started (nflverse `yards_gained` is 0 on punts).

@@ -199,10 +199,23 @@ def test_impossible_field_goals_always_miss(state: GameState) -> None:
 
 
 def test_clock_rules(state: GameState) -> None:
-    """30s for a running play, 15s in the last 2 minutes, and the half stops at 1800."""
+    """30s for a running play (15s in the last 2 minutes), 6s for a stopped-clock play
+    everywhere, and the half stops at 1800."""
     assert run_clock(state, 30).seconds_left_in_game == 1470
+    assert run_clock(state, 6).seconds_left_in_game == 1494
     late = state.model_copy(update={"quarter": 4, "seconds_left_in_game": 100})
-    assert run_clock(late, 6).seconds_left_in_game == 85
+    assert run_clock(late, 30).seconds_left_in_game == 85
+    assert run_clock(late, 6).seconds_left_in_game == 94      # incompletion: not 15s
+
+
+def test_incompletion_late_takes_six_seconds(state: GameState) -> None:
+    """An incomplete pass with 1:40 left only takes 6 seconds off (it used to take 15)."""
+    late = state.model_copy(update={"quarter": 4, "seconds_left_in_game": 100})
+    row = scrimmage_row(yards=0, desc="pass incomplete short left")
+    out = apply_scrimmage(late, PlayCall.short_pass, row)
+    assert out.new_state.seconds_left_in_game == 94
+    run = apply_scrimmage(late, PlayCall.run, scrimmage_row(yards=3))
+    assert run.new_state.seconds_left_in_game == 85
     first_half = state.model_copy(update={"quarter": 2, "seconds_left_in_game": 1810})
     out = apply_scrimmage(first_half, PlayCall.run, scrimmage_row(yards=3))
     assert out.new_state.seconds_left_in_game == 1800 and out.drive_over

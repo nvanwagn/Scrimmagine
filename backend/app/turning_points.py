@@ -134,23 +134,25 @@ def scenario_title(state: GameState) -> str:
 
 # ---------- the offense's skill players in that game ----------
 
-def most_frequent(names: pd.Series, exclude: str | None = None) -> str | None:
+def most_frequent(names: pd.Series, exclude: tuple[str | None, ...] = ()) -> str | None:
     """The most common non-null name (ties go to whoever appears first), skipping `exclude`."""
     names = names.dropna()
-    if exclude is not None:
-        names = names[names != exclude]
+    names = names[~names.isin([e for e in exclude if e])]
     return str(names.value_counts(sort=True).index[0]) if not names.empty else None
 
 
 def offense_players(game: pd.DataFrame, team: str) -> OffensePlayers:
-    """The team's QB, RB and top target in this game. Missing name columns give None."""
+    """The team's QB, RB and top two targets in this game, four different players.
+    Missing name columns give None."""
     ours = game[game["posteam"] == team]
 
-    def pick(column: str, exclude: str | None = None) -> str | None:
+    def pick(column: str, *exclude: str | None) -> str | None:
         return most_frequent(ours[column], exclude) if column in ours else None
 
     qb = pick("passer_player_name")
-    return OffensePlayers(qb=qb, rb=pick("rusher_player_name", exclude=qb), wr=pick("receiver_player_name"))
+    rb = pick("rusher_player_name", qb)               # QB scrambles count as rushes
+    wr = pick("receiver_player_name", qb, rb)         # backs get targets too
+    return OffensePlayers(qb=qb, rb=rb, wr=wr, wr2=pick("receiver_player_name", qb, rb, wr))
 
 
 def build_scenario(game: pd.DataFrame, play: pd.Series, intro: str, win_prob: WinProbFn) -> Scenario:

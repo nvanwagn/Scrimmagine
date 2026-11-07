@@ -22,6 +22,7 @@ TWO_MINUTES = 120
 HALF = 1800
 RUNNING_CLOCK = 30               # run, completion or sack
 STOPPED_CLOCK = 6                # incompletion, interception, kick
+HURRY_UP_CLOCK = 15              # running play in the last 2 minutes of a half
 
 WinProbFn = Callable[[GameState], float]
 
@@ -178,8 +179,10 @@ def half_seconds_left(state: GameState) -> int:
 
 
 def run_clock(state: GameState, base_seconds: int) -> GameState:
-    """Return the state with play time taken off (15s for any play in the last 2 min of a half)."""
-    used = 15 if half_seconds_left(state) <= TWO_MINUTES else base_seconds
+    """Return the state with play time taken off. In the last 2 min of a half a running play
+    takes HURRY_UP_CLOCK (15s); stopped-clock plays (incompletions, kicks) keep their 6s."""
+    late = half_seconds_left(state) <= TWO_MINUTES
+    used = min(base_seconds, HURRY_UP_CLOCK) if late else base_seconds
     seconds = state.seconds_left_in_game - used
     if state.quarter <= 2 and seconds < HALF:
         seconds = HALF

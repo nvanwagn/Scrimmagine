@@ -90,13 +90,15 @@ class RealPlay(BaseModel):
 class OffensePlayers(BaseModel):
     """The offense's main skill players in that real game, as nflverse names ("D.Prescott").
 
-    qb = most dropbacks, rb = most carries (not counting the QB), wr = most targets
-    (play-by-play has no positions, so this can be a tight end). None if unknown.
+    qb = most dropbacks, rb = most carries (not counting the QB), wr = most targets,
+    wr2 = second-most targets (play-by-play has no positions, so either can be a tight end).
+    None if unknown.
     """
 
     qb: str | None = None
     rb: str | None = None
     wr: str | None = None
+    wr2: str | None = None
 
 
 class Scenario(BaseModel):
