@@ -1,0 +1,11 @@
+# Keep the build context small, and never send local secrets or data into the image.
+.git
+**/__pycache__
+**/.pytest_cache
+backend/.venv
+backend/.env
+backend/data
+scrimmagine-mockups
+*.pdf
+Dockerfile
+.dockerignore
