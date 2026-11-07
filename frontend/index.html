@@ -17,7 +17,6 @@
   <div class="turf-strip"></div>
   <div class="home-body">
     <div class="home-left">
-      <div class="eyebrow">INDY INIT · HACKATHON BUILD</div>
       <h1 id="home-title" class="logo">SCRIMMAGINE</h1>
       <p class="pitch">Drop into the biggest moments of real NFL games. Make the call. Get graded against the coach who actually made it.</p>
       <div class="hero-field" aria-hidden="true">
@@ -49,6 +48,31 @@
       </div>
     </div>
   </div>
+
+  <button type="button" class="settings-btn" id="btn-settings" aria-label="Settings" aria-haspopup="dialog">
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" style="shape-rendering:crispEdges">
+      <path d="M8 1h4v3h-4z M8 16h4v3h-4z M1 8h3v4h-3z M16 8h3v4h-3z M3 3h3v3h-3z M14 3h3v3h-3z M3 14h3v3h-3z M14 14h3v3h-3z M5 5h10v10h-10z" fill="currentColor"></path>
+      <path d="M8 8h4v4h-4z" fill="#1a2035"></path>
+    </svg>
+    <span class="txt">SETTINGS</span>
+  </button>
+
+  <dialog class="settings" id="settings" aria-labelledby="settings-title">
+    <form method="dialog" class="settings-form">
+      <h2 id="settings-title">SETTINGS</h2>
+      <div class="slider-row">
+        <label for="vol-sfx">SOUND EFFECTS</label>
+        <output for="vol-sfx" id="vol-sfx-out">80%</output>
+        <input type="range" id="vol-sfx" min="0" max="100" step="5" value="80">
+      </div>
+      <div class="slider-row">
+        <label for="vol-music">MENU MUSIC</label>
+        <output for="vol-music" id="vol-music-out">45%</output>
+        <input type="range" id="vol-music" min="0" max="100" step="5" value="45">
+      </div>
+      <button type="submit" class="btn btn-primary" id="btn-settings-done">DONE</button>
+    </form>
+  </dialog>
 </section>
 
 <!-- ============ GAME (pre-snap + result) ============ -->

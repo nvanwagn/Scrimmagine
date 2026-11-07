@@ -3,7 +3,7 @@
 import * as api from './api.js';
 import { Field, buildPlan } from './field.js';
 import { kitsFor, loadSprites, spritesNow, mix, textOn } from './sprites.js';
-import { playSfx, startMusic, stopMusic } from './sound.js';
+import { getVolumes, playSfx, setMusicVolume, setSfxVolume, startMusic, stopMusic } from './sound.js';
 
 // ---------- constants ----------
 
@@ -13,6 +13,7 @@ const CALL_LABEL = { run: 'RUN', short_pass: 'SHORT PASS', deep_pass: 'DEEP PASS
 const FG_MAX_DISTANCE = 70; // mirrors backend simulator.FG_MAX_DISTANCE: from here on, always a miss
 const GOOD_OUTCOMES = new Set(['first_down', 'touchdown', 'fg_made']);
 const FAIL_OUTCOMES = new Set(['turnover', 'turnover_on_downs', 'fg_missed']);
+const SUCCESS_SOUND_OUTCOMES = new Set(['first_down', 'touchdown', 'fg_made']);
 const GOOD = '#7dffa0', BAD = '#ff8f84';
 
 // ---------- state ----------
@@ -471,7 +472,7 @@ function showResult(i) {
   banner.innerHTML = `<div class="title">${esc(title)}</div><div class="desc">${esc(r.description)}</div>`;
   banner.hidden = false;
   $('announce').textContent = `${title} ${r.description} Win probability ${pct(sim.wp_before)} to ${pct(sim.wp_after)}.`;
-  if (r.outcome === 'first_down') playSfx('first_down');
+  if (SUCCESS_SOUND_OUTCOMES.has(r.outcome)) playSfx('successful_play');
   else if (kind === 'fail') playSfx('failed_play');
 
   // Score bug shows the new state.
@@ -872,6 +873,21 @@ document.addEventListener('keydown', e => {
   const b = document.querySelector(`#calls button[data-call="${CALLS[n - 1]}"]`);
   if (b && !b.disabled) b.click();
 });
+
+// ---------- settings (volume sliders) ----------
+
+function wireSlider(inputId, outputId, get, set, onChange) {
+  const input = $(inputId), out = $(outputId);
+  const sync = () => { out.value = `${input.value}%`; };
+  input.value = Math.round(get() * 100);
+  sync();
+  input.addEventListener('input', () => { set(input.value / 100); sync(); });
+  if (onChange) input.addEventListener('change', onChange);
+}
+
+wireSlider('vol-sfx', 'vol-sfx-out', () => getVolumes().sfx, setSfxVolume, () => playSfx('button')); // preview
+wireSlider('vol-music', 'vol-music-out', () => getVolumes().music, setMusicVolume);
+$('btn-settings').addEventListener('click', () => $('settings').showModal());
 
 show('home'); // also starts the menu music (or arms it for the first click if autoplay is blocked)
 loadHome();
