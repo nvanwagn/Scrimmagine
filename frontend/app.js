@@ -959,6 +959,46 @@ function showSummary({ review = false } = {}) {
 
 const GRADE_POINTS = { A: 4, B: 3, C: 2, D: 1, F: 0 };
 
+// Share card, like Krillion's: puzzle number, daily score, one emoji per scenario (best to worst).
+const GRADE_EMOJI = { A: '🏆', B: '🔥', C: '🏈', D: '🟨', F: '🟥' };
+const UNPLAYED_EMOJI = '⬛';
+const FIRST_DAY = '2026-11-10';   // Scrimmagine #1 (US Eastern date)
+
+/** Puzzle number for an Eastern date: #1 on FIRST_DAY, +1 every day. */
+function dayNumber(day) {
+  return Math.round((Date.parse(day) - Date.parse(FIRST_DAY)) / 86400000) + 1;
+}
+
+/** One emoji per scenario in today's order. */
+function emojiRow(results) {
+  return results.map(x => (x.r ? GRADE_EMOJI[x.r.grade] : UNPLAYED_EMOJI)).join('');
+}
+
+/** The text that SHARE RESULTS copies. */
+function shareText(results, dailyScore) {
+  return `Scrimmagine #${dayNumber(app.day || easternDay())} 🏈\n${dailyScore}/${results.length * 100}\n\n${emojiRow(results)}`;
+}
+
+/** Copy to the clipboard (with a fallback for browsers that block it); true if it worked. */
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { /* not supported */ }
+    area.remove();
+    return ok;
+  }
+}
+
 function averageGrade(grades) {
   const avg = grades.reduce((sum, gr) => sum + GRADE_POINTS[gr], 0) / grades.length;
   const letter = avg >= 3.5 ? 'A' : avg >= 2.5 ? 'B' : avg >= 1.5 ? 'C' : avg >= 0.5 ? 'D' : 'F';
@@ -998,7 +1038,7 @@ function showFinal() {
   $('final-body').innerHTML = `
     <div class="sum-head">
       <div class="sum-title">
-        <span class="crumbs">TODAY'S ${results.length} TURNING POINTS</span>
+        <span class="crumbs">SCRIMMAGINE #${dayNumber(app.day || easternDay())} · TODAY'S ${results.length} TURNING POINTS</span>
         <h1 id="final-title" style="text-shadow:4px 4px 0 #c8352a">FINAL RESULTS</h1>
       </div>
     </div>
@@ -1008,12 +1048,16 @@ function showFinal() {
           <span class="lbl">AVERAGE GRADE</span>
           <span class="grade">${letter}</span>
           <span class="grade-line">${played.length ? `Score ${dailyScore} / ${results.length * 100} · ${avg.toFixed(1)} / 4.0 · ${esc(playedNote)}` : 'No scenarios played yet.'}</span>
+          <span class="share-row" aria-label="Your results by scenario">${emojiRow(results)}</span>
+          <span class="share-legend">🏆 A · 🔥 B · 🏈 C · 🟨 D · 🟥 F · ⬛ not played</span>
           <span class="grade-how">One attempt per scenario. A new set unlocks at midnight ET.</span>
           <div class="grade-turf">${turf}</div>
         </div>
         <div class="sum-actions">
           ${next == null ? '' : `<button type="button" class="btn btn-primary btn-big" id="btn-final-next"><span>KEEP PLAYING</span><span aria-hidden="true">▶</span></button>`}
-          <button type="button" class="btn${next == null ? ' btn-primary btn-big' : ''}" id="btn-final-menu">MENU</button>
+          <button type="button" class="btn${next == null ? ' btn-primary btn-big' : ''}" id="btn-share">SHARE RESULTS</button>
+          <button type="button" class="btn" id="btn-final-menu">MENU</button>
+          <p class="share-status" id="share-status" role="status" aria-live="polite"></p>
         </div>
       </div>
       <div class="sum-right">
@@ -1038,8 +1082,13 @@ function showFinal() {
     </div>`;
   if (next != null) $('btn-final-next').addEventListener('click', () => startScenario(next));
   $('btn-final-menu').addEventListener('click', goHome);
+  $('btn-share').addEventListener('click', async () => {
+    const text = shareText(results, dailyScore);
+    const ok = await copyText(text);
+    $('share-status').textContent = ok ? 'Copied! Paste it anywhere.' : text;   // shown to copy by hand
+  });
   show('final');
-  $(next == null ? 'btn-final-menu' : 'btn-final-next').focus({ preventScroll: true });
+  $(next == null ? 'btn-share' : 'btn-final-next').focus({ preventScroll: true });
 }
 
 function goHome() {

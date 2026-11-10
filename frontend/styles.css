@@ -337,6 +337,9 @@ h1, h2, p { margin: 0; }
 .grade { font-family: var(--pixel); font-size: 92px; line-height: 1.2; color: var(--gold); text-shadow: 6px 6px 0 #000; }
 .grade-line { font-size: 24px; color: var(--soft); text-align: center; }
 .grade-how { font-size: 18px; line-height: 1.1; color: var(--muted); text-align: center; }
+.share-row { font-size: 30px; letter-spacing: 4px; line-height: 1.2; text-align: center; }
+.share-legend { font-size: 16px; color: var(--muted); text-align: center; }
+.share-status { min-height: 1em; font-size: 18px; line-height: 1.1; color: var(--good); text-align: center; white-space: pre-line; }
 .grade-turf {
   align-self: stretch; margin: 14px -18px 0; height: 120px; background: var(--grass); border-top: 4px solid #000;
   display: flex; align-items: flex-end; justify-content: center; gap: 18px; padding-bottom: 10px;
