@@ -157,8 +157,16 @@ async function loadHome() {
   renderHome();
 }
 
+/** Menu button to today's results: how many of the 6 are done; usable once one is. */
+function renderResultsButton() {
+  const done = app.scenarios.filter(sc => app.daily.runs[sc.id]?.done).length;
+  $('btn-results').disabled = done === 0;
+  $('results-progress').textContent = app.scenarios.length ? `${done}/${app.scenarios.length} PLAYED` : '';
+}
+
 function renderHome() {
   renderEndlessButton();
+  renderResultsButton();
   const list = $('scenario-list');
   if (!app.scenarios.length) {
     list.innerHTML = '<p class="muted loading">No scenarios today. Check that the server has its data.</p>';
@@ -1039,7 +1047,7 @@ function showFinal() {
     <div class="sum-head">
       <div class="sum-title">
         <span class="crumbs">SCRIMMAGINE #${dayNumber(app.day || easternDay())} · TODAY'S ${results.length} TURNING POINTS</span>
-        <h1 id="final-title" style="text-shadow:4px 4px 0 #c8352a">FINAL RESULTS</h1>
+        <h1 id="final-title" style="text-shadow:4px 4px 0 #c8352a">${next == null ? 'FINAL RESULTS' : "TODAY'S RESULTS"}</h1>
       </div>
     </div>
     <div class="sum-body">
@@ -1298,6 +1306,7 @@ function renderEndlessButton() {
 // ---------- events ----------
 
 $('btn-endless').addEventListener('click', startEndless);
+$('btn-results').addEventListener('click', showFinal);
 
 $('scenario-list').addEventListener('click', e => {
   const card = e.target.closest('.scenario-card');
