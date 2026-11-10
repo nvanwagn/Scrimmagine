@@ -18,7 +18,7 @@ Call the plays at the biggest moments of real NFL games. Each day brings 6 scena
 |---|---|
 | `backend/` | FastAPI server: play simulator, win probability model, turning-point finder, Claude commentary |
 | `backend/scripts/` | One-off data scripts: download play-by-play, train the WP model, build the day's scenarios |
-| `backend/data/` | Generated data (git-ignored): `pbp.parquet`, `wp_model.joblib`, `scenarios.json` |
+| `backend/data/` | Generated data (git-ignored): `pbp.parquet`, `wp_model.joblib` (and `scenarios.json` if you preview a day) |
 | `backend/tests/` | pytest suite |
 | `frontend/` | Plain HTML/CSS/JS game client, served by the backend at `/` |
 | `sprites/`, `sound-effects/` | Pixel-art sprites and sounds, served at `/sprites` and `/sound-effects` |
@@ -26,7 +26,7 @@ Call the plays at the biggest moments of real NFL games. Each day brings 6 scena
 | `Dockerfile` | One image with the backend, the frontend and pre-built data |
 | `Indy Init Design Doc.pdf` | Design document |
 
-There is no database: the server loads the play-by-play parquet, the WP model and `scenarios.json` into memory once at startup.
+There is no database: the server loads the play-by-play parquet and the WP model into memory once at startup. Each day's 6 scenarios are picked from that data automatically (see below).
 
 ## Requirements
 
@@ -56,11 +56,11 @@ Without a key the game still works fully, because commentary and intros fall bac
 ```powershell
 python -m scripts.download_data     # 1. fetch 2024+2025 pbp, trim columns -> data/pbp.parquet (~1 min)
 python -m scripts.train_wp          # 2. train + sanity-check + save data/wp_model.joblib (~30 s)
-python -m scripts.build_scenarios   # 3. today's 6 scenarios -> data/scenarios.json (run once per day)
+python -m scripts.build_scenarios   # optional: preview today's 6 -> data/scenarios.json
 python -m pytest                    # optional: run the tests
 ```
 
-Steps 1 and 2 only need to run once. Run step 3 each day for a new set of 6 scenarios. It accepts `--date YYYY-MM-DD` to rebuild a given day's set; restart the server afterwards.
+Steps 1 and 2 only need to run once. You don't need to rebuild scenarios: the server picks a new set of 6 every day by itself, at midnight US Eastern (EST/EDT), so everyone gets the same 6 on the same day. `build_scenarios` just previews a day's set (`--date YYYY-MM-DD`) without starting the server.
 
 Last sanity check: our WP vs nflverse `wp` on 113 held-out games, mean absolute difference **0.043**.
 
@@ -68,7 +68,7 @@ Last sanity check: our WP vs nflverse `wp` on 113 held-out games, mean absolute 
 
 The FastAPI server also serves the game itself (`frontend/` at `/`, plus `/sprites` and `/sound-effects`), so one command runs everything.
 
-1. Do the setup and build the data above once. `backend/data/` should contain `pbp.parquet`, `wp_model.joblib` and `scenarios.json`.
+1. Do the setup and build the data above once. `backend/data/` should contain `pbp.parquet` and `wp_model.joblib`.
 2. From `backend/`, start the server with the venv's Python:
 
    ```powershell
@@ -82,11 +82,11 @@ The FastAPI server also serves the game itself (`frontend/` at `/`, plus `/sprit
 Troubleshooting:
 
 - **numpy `RuntimeWarning`s on startup** (`invalid value encountered in exp2`): the server is running on your system Python, not the venv. Activate `.venv` and use `python -m uvicorn`, or run `.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000`.
-- **"Couldn't load today's scenarios"**: the server isn't running, or `backend/data/scenarios.json` is missing. Run `python -m scripts.build_scenarios`, then restart the server.
+- **"Couldn't load today's scenarios"**: the server isn't running, or it couldn't start because `backend/data/pbp.parquet` is missing. Run the data steps above, then restart the server.
 - **Port 8000 already in use**: run `python -m uvicorn app.main:app --port 8001` and open http://localhost:8001.
 - **Open the game through the server, not a static file server** like VS Code Live Server. The frontend calls `/api/...` on the origin it was loaded from.
 - **No AI commentary**: without `ANTHROPIC_API_KEY` and `CLAUDE_MODEL` in `backend/.env`, the booth uses template lines. That's expected.
-- **No player names on the field or in the booth**: `backend/data/pbp.parquet` predates the name columns. Rerun `python -m scripts.download_data` and `python -m scripts.build_scenarios`.
+- **No player names on the field or in the booth**: `backend/data/pbp.parquet` predates the name columns. Rerun `python -m scripts.download_data` and restart the server.
 
 ## Run with Docker (from the repo root)
 
@@ -97,17 +97,18 @@ docker build -t scrimmagine --build-arg DATA_DATE=2026-11-07 .
 docker run --rm -p 8000:8000 scrimmagine
 ```
 
-Then open http://localhost:8000. Pass a new `DATA_DATE` to rebuild with a fresh set of scenarios. Scenario intros built inside the image use templates because no API key is available at build time. To get live commentary, add `-e ANTHROPIC_API_KEY=... -e CLAUDE_MODEL=...` to `docker run`.
+Then open http://localhost:8000. The daily set changes on its own; `DATA_DATE` only forces a fresh data download when you rebuild. Scenario intros built inside the image use templates because no API key is available at build time. To get live commentary, add `-e ANTHROPIC_API_KEY=... -e CLAUDE_MODEL=...` to `docker run`.
 
 ## Endpoints
 
 | Method | Path | Body / params | Returns |
 |---|---|---|---|
-| GET | `/api/scenarios` | none | today's 6 `Scenario`s |
+| GET | `/api/scenarios` | none | today's 6 `Scenario`s (same for everyone; new at midnight ET) |
 | GET | `/api/games` | `season`, `team` (optional) | `Game` list (teams, week, final score) |
 | GET | `/api/games/{game_id}/turning-points` | `limit` (default 5) | `Scenario` list for that game |
 | GET | `/api/endless/next` | none | a random `Scenario` for endless mode |
-| POST | `/api/simulate` | `state`, `call` | `SimulateResponse` |
+| POST | `/api/call-odds` | `state` | `OddsResponse`: `wp_before` and, per call, success / TD / turnover chance, avg yards, expected WP and WPA |
+| POST | `/api/simulate` | `state`, `call`, `scenario_id` (optional: daily games, predetermined outcome) | `SimulateResponse` |
 | POST | `/api/commentary` | `state_before`, `call`, `result`, `wp_before`, `wp_after`, `players` (optional) | `Commentary` |
 
 Interactive docs: http://localhost:8000/docs. Sprites: http://localhost:8000/sprites/crimson_ready.png
@@ -150,3 +151,6 @@ curl -X POST http://localhost:8000/api/commentary -H "Content-Type: application/
 - **Thin buckets:** when a bucket has fewer than 30 plays, drop the field zone, then merge neighbouring distance buckets, then fall back to all plays on that down, then the whole pool. `/api/simulate` always returns a result.
 - **Claude calls:** 3 s timeout, no retries, capped at 30 a minute. On any failure we use template text. Commentary is cached for repeated situations.
 - **Endless mode:** a touchdown, or a field goal that ties the game or takes the lead, keeps the run going.
+- **Daily game:** like a daily puzzle, everyone plays the same 6 under the same conditions. A call's outcome is predetermined by the scenario, the exact situation and the call (a seeded draw from the same real-play pool), so two players who make the same call in the same spot get the same play. Each scenario gets one attempt: every call is saved in the browser the moment it's made, leaving mid-drive resumes there, and a finished drive can't be replayed. Your daily score is the sum of the six 0-100 scores. Endless mode stays random.
+- **Odds:** for each call, every real play it could draw (the same groups and sack rate the simulator samples from, up to 250 per group) is applied to the current state and scored by the WP model. Success is a first down or touchdown (a made kick for field goals). The call buttons show the chances; expected WPA stays hidden until after the snap.
+- **Grade:** 60% decisions + 40% result. Each call earns full decision credit if its expected WP matches the best legal call's, falling to zero at 5 points below it. The result is your drive's actual WPA: 50 for no change, 100 at +20 points or a locked-up win, 0 at -20. The real coach's WPA is shown for comparison but doesn't set the grade.

@@ -260,11 +260,12 @@ h1, h2, p { margin: 0; }
 
 .wp-section { flex: none; display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 3px solid var(--line); }
 .wp-head { display: flex; justify-content: space-between; font-family: var(--pixel); font-size: 9px; color: var(--muted); gap: 8px; }
-.wp-delta { display: flex; align-items: center; gap: 10px; font-family: var(--pixel); }
+.wp-delta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-family: var(--pixel); }
 .wp-delta .from { font-size: 12px; color: var(--muted); }
 .wp-delta .arrow { font-size: 10px; color: var(--muted); }
 .wp-delta .to { font-size: 20px; color: var(--cream); }
 .wpa-chip { margin-left: auto; font-family: var(--pixel); font-size: 10px; padding: 5px 8px; color: var(--bg); border: 2px solid #000; }
+.wpa-chip.decision-chip { margin-left: 0; }
 .wpbar { position: relative; display: flex; height: 20px; border: 3px solid #000; background: var(--line); }
 .wpbar .seg { height: 100%; }
 .wpbar .lbl {
@@ -291,9 +292,11 @@ h1, h2, p { margin: 0; }
 .call .name { display: flex; align-items: center; gap: 8px; font-family: var(--pixel); font-size: 12px; }
 .call .key { font-size: 9px; padding: 3px 5px; background: var(--bg); color: var(--gold); }
 .call .hint { font-size: 20px; line-height: 1; }
+.call .odds { font-family: var(--pixel); font-size: 8px; line-height: 1.4; color: var(--gold); }
 .call:disabled { background: var(--disabled-bg); color: var(--disabled-fg); cursor: not-allowed; }
 .call:disabled .name > span:last-child { text-decoration: line-through; }
 .call:disabled .key { color: var(--disabled-fg); }
+.call.busy .odds { color: var(--muted); }
 .call.busy { opacity: 0.7; }
 .call.primary { background: var(--gold); color: var(--bg); }
 .call.primary:hover:not(:disabled) { background: var(--gold-hover); }
@@ -333,6 +336,7 @@ h1, h2, p { margin: 0; }
 .grade-card .lbl { font-family: var(--pixel); font-size: 10px; color: var(--muted); }
 .grade { font-family: var(--pixel); font-size: 92px; line-height: 1.2; color: var(--gold); text-shadow: 6px 6px 0 #000; }
 .grade-line { font-size: 24px; color: var(--soft); text-align: center; }
+.grade-how { font-size: 18px; line-height: 1.1; color: var(--muted); text-align: center; }
 .grade-turf {
   align-self: stretch; margin: 14px -18px 0; height: 120px; background: var(--grass); border-top: 4px solid #000;
   display: flex; align-items: flex-end; justify-content: center; gap: 18px; padding-bottom: 10px;
@@ -443,6 +447,8 @@ h1, h2, p { margin: 0; }
   }
   .coach-tease, .coach-tile, .over-msg { overflow: hidden; }
   .call:disabled .hint { color: var(--disabled-fg); }
+  .call:has(.odds) .hint { display: none; }
+  .call .odds { font-size: 7px; }
   .coach-tease { min-height: 56px; border-width: 3px; font-size: 18px; }
   .coach-tease b { display: none; }
   .coach-tile { min-height: 56px; border-width: 3px; box-shadow: 0 4px 0 #000; padding: 6px 10px; gap: 4px; }

@@ -1,12 +1,11 @@
-"""Load pbp.parquet, the WP model and scenarios.json into memory once at startup."""
+"""Load pbp.parquet and the WP model into memory once at startup."""
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
 
-from app.models import Game, Scenario
+from app.models import Game
 from app.simulator import PlayPools, build_pools
 from app.wp_model import WinProbModel
 
@@ -23,7 +22,6 @@ class DataStore:
     plays: pd.DataFrame
     pools: PlayPools
     wp: WinProbModel
-    scenarios: list[Scenario]
     games: list[Game]
 
 
@@ -66,13 +64,6 @@ def build_games(plays: pd.DataFrame) -> list[Game]:
             for gid, row in grouped.iterrows()]
 
 
-def load_scenarios(path: Path = SCENARIOS_PATH) -> list[Scenario]:
-    """Read the precomputed daily scenarios, or an empty list if not built yet."""
-    if not path.exists():
-        return []
-    return [Scenario(**item) for item in json.loads(path.read_text(encoding="utf-8"))]
-
-
 def load_store() -> DataStore:
     """Build the in-memory DataStore from the files in data/."""
     plays = load_plays()
@@ -80,6 +71,5 @@ def load_store() -> DataStore:
         plays=plays,
         pools=build_pools(plays),
         wp=WinProbModel.load(MODEL_PATH, plays),
-        scenarios=load_scenarios(),
         games=build_games(plays),
     )

@@ -4,8 +4,10 @@ Run from backend/:  uvicorn app.main:app
 """
 
 import os
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -15,10 +17,11 @@ from fastapi.staticfiles import StaticFiles
 
 from app.data_loader import DataStore, load_store
 from app.ai import generate_commentary
-from app.models import (Commentary, CommentaryRequest, Game, Scenario, SimulateRequest,
-                        SimulateResponse)
-from app.simulator import simulate
-from app.turning_points import close_game_ids, random_endless_scenario, scenarios_for_game
+from app.models import (Commentary, CommentaryRequest, Game, OddsRequest, OddsResponse, Scenario,
+                        SimulateRequest, SimulateResponse)
+from app.simulator import odds_for_state, seeded_rng, simulate
+from app.turning_points import (close_game_ids, daily_date, daily_scenarios, random_endless_scenario,
+                                 scenarios_for_game)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
@@ -28,6 +31,9 @@ store: DataStore | None = None
 rng = np.random.default_rng()
 turning_point_cache: dict[tuple[str, int], list[Scenario]] = {}  # intros are written once per game
 close_games: list[str] | None = None   # endless mode's game pool, computed on first use
+DAILY_CACHE_DAYS = 3                   # today's set, plus a little slack around midnight
+daily_cache: dict[date, list[Scenario]] = {}
+daily_lock = threading.Lock()
 
 
 def load_env_file(path: Path) -> None:
@@ -48,10 +54,11 @@ def get_store() -> DataStore:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    """Load the parquet, WP model and scenarios once, before serving requests."""
+    """Load the parquet and WP model once, and pick today's scenarios, before serving requests."""
     global store
     load_env_file(ENV_PATH)
     store = load_store()
+    scenarios_for_day(daily_date())   # warm today's set so the first visitor doesn't wait
     yield
 
 
@@ -60,10 +67,22 @@ app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS,
                    allow_methods=["*"], allow_headers=["*"])
 
 
+def scenarios_for_day(day: date) -> list[Scenario]:
+    """A day's 6, picked from the in-memory plays the first time that day is asked for, then cached."""
+    with daily_lock:
+        if day not in daily_cache:
+            data = get_store()
+            daily_cache[day] = daily_scenarios(data.plays, day, data.wp)
+            while len(daily_cache) > DAILY_CACHE_DAYS:
+                daily_cache.pop(next(iter(daily_cache)))   # oldest first
+        return daily_cache[day]
+
+
 @app.get("/api/scenarios", response_model=list[Scenario])
 def get_scenarios() -> list[Scenario]:
-    """Today's curated scenarios from scenarios.json (already in memory)."""
-    return get_store().scenarios
+    """Today's 6 daily scenarios: the same for everyone, new at midnight US Eastern.
+    There is deliberately no date parameter, so tomorrow's set can't be previewed."""
+    return scenarios_for_day(daily_date())
 
 
 @app.get("/api/games", response_model=list[Game])
@@ -104,11 +123,20 @@ def get_endless_next() -> Scenario:
     return scenario
 
 
+@app.post("/api/call-odds", response_model=OddsResponse)
+def post_call_odds(body: OddsRequest) -> OddsResponse:
+    """Success chance and expected WP of every call from a state, over all the real plays it can draw."""
+    data = get_store()
+    return odds_for_state(body.state, data.pools, data.wp)
+
+
 @app.post("/api/simulate", response_model=SimulateResponse)
 def post_simulate(body: SimulateRequest) -> SimulateResponse:
-    """Simulate one play call from a game state."""
+    """Simulate one play call from a game state. With a scenario_id (the daily game) the outcome is
+    predetermined: the same scenario, situation and call give every player the same real play."""
     data = get_store()
-    return simulate(body.state, body.call, data.pools, data.wp, rng)
+    draw = seeded_rng(body.scenario_id, body.state, body.call) if body.scenario_id else rng
+    return simulate(body.state, body.call, data.pools, data.wp, draw)
 
 
 @app.post("/api/commentary", response_model=Commentary)

@@ -24,16 +24,33 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def state_to_frame(state: GameState) -> pd.DataFrame:
-    """One-row frame with the model features for a GameState."""
-    row = pd.DataFrame([{
+def state_row(state: GameState) -> dict:
+    """The raw model inputs for a GameState."""
+    return {
         "score_differential": state.offense_score - state.defense_score,
         "game_seconds_remaining": state.seconds_left_in_game,
         "yardline_100": state.yardline_100, "down": state.down, "ydstogo": state.distance,
         "posteam_timeouts_remaining": state.offense_timeouts,
         "defteam_timeouts_remaining": state.defense_timeouts,
-    }])
-    return add_features(row)[FEATURES]
+    }
+
+
+def states_to_frame(states: list[GameState]) -> pd.DataFrame:
+    """Frame with the model features, one row per GameState."""
+    return add_features(pd.DataFrame([state_row(s) for s in states]))[FEATURES]
+
+
+def state_to_frame(state: GameState) -> pd.DataFrame:
+    """One-row frame with the model features for a GameState."""
+    return states_to_frame([state])
+
+
+def final_score_wp(state: GameState) -> float | None:
+    """Exact WP when regulation's clock has hit zero (win, loss or tie); None otherwise."""
+    if state.seconds_left_in_game != 0 or state.quarter > 4:
+        return None
+    diff = state.offense_score - state.defense_score
+    return 1.0 if diff > 0 else 0.0 if diff < 0 else 0.5
 
 
 def fallback_keys(score_diff: np.ndarray, seconds: np.ndarray, yardline: np.ndarray) -> list[tuple]:
@@ -74,15 +91,23 @@ class WinProbModel:
 
     def predict(self, state: GameState) -> float:
         """Offense win probability; exact when the game clock has hit zero."""
-        if state.seconds_left_in_game == 0 and state.quarter <= 4:
-            diff = state.offense_score - state.defense_score
-            return 1.0 if diff > 0 else 0.0 if diff < 0 else 0.5
-        if self.model is None:
-            return self.predict_fallback(state)
-        try:
-            wp = float(self.model.predict_proba(state_to_frame(state))[0, 1])
-        except Exception:
-            return self.predict_fallback(state)
-        return wp if np.isfinite(wp) else self.predict_fallback(state)
+        return self.predict_many([state])[0]
+
+    def predict_many(self, states: list[GameState]) -> list[float]:
+        """Offense win probability for many states in one model call (same rules as predict)."""
+        if not states:
+            return []
+        raw: list[float | None] = [None] * len(states)
+        if self.model is not None:
+            try:
+                raw = [float(p) for p in self.model.predict_proba(states_to_frame(states))[:, 1]]
+            except Exception:
+                pass  # fall back state by state below
+        out = []
+        for state, wp in zip(states, raw):
+            exact = final_score_wp(state)
+            ok = wp is not None and np.isfinite(wp)
+            out.append(exact if exact is not None else wp if ok else self.predict_fallback(state))
+        return out
 
     __call__ = predict

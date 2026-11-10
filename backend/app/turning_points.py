@@ -6,6 +6,8 @@ and the real coach both call a whole drive, so their WPA totals are a fair compa
 
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -181,6 +183,34 @@ def scenarios_for_game(game: pd.DataFrame, win_prob: WinProbFn, limit: int = 5,
     with ThreadPoolExecutor(max_workers=len(points)) as pool:
         intros = list(pool.map(lambda p: intro_fn(state_from_row(p), str(p["desc"])), points))
     return [build_scenario(game, play, intro, win_prob) for play, intro in zip(points, intros)]
+
+
+# ---------- the daily set ----------
+
+DAILY_COUNT = 6
+DAILY_TIMEZONE = ZoneInfo("America/New_York")   # the daily set flips at midnight Eastern (EST/EDT)
+
+
+def daily_date() -> date:
+    """Today's date in US Eastern time: everyone gets the same 6, and they change at midnight ET."""
+    return datetime.now(DAILY_TIMEZONE).date()
+
+
+def daily_game_order(plays: pd.DataFrame, day: date) -> list[str]:
+    """Close games in a date-seeded random order: a new order every day, the same all day."""
+    rng = np.random.default_rng(int(day.strftime("%Y%m%d")))
+    return list(rng.permutation(close_game_ids(plays)))
+
+
+def daily_scenarios(plays: pd.DataFrame, day: date, win_prob: WinProbFn,
+                    intro_fn: IntroFn = generate_intro) -> list[Scenario]:
+    """The day's 6: the last one-possession drive from each of the first 6 usable close games."""
+    picked: list[Scenario] = []
+    for game_id in daily_game_order(plays, day):
+        picked += scenarios_for_game(plays[plays["game_id"] == game_id], win_prob, limit=1, intro_fn=intro_fn)
+        if len(picked) == DAILY_COUNT:
+            break
+    return picked
 
 
 # ---------- endless mode ----------

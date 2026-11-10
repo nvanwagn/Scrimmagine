@@ -1,12 +1,13 @@
 """Play simulator: bucket the situation, sample a real play, apply it, run the clock."""
 
+import hashlib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 
-from app.models import GameState, Outcome, PlayCall, PlayResult, SimulateResponse
+from app.models import CallOdds, GameState, OddsResponse, Outcome, PlayCall, PlayResult, SimulateResponse
 
 MIN_BUCKET = 30
 DISTANCE_EDGES = [1, 3, 6, 10]   # buckets: 1 | 2-3 | 4-6 | 7-10 | 11+
@@ -108,27 +109,51 @@ def pick(pool: pd.DataFrame, rng: np.random.Generator) -> pd.Series:
     return pool.iloc[int(rng.integers(len(pool)))]
 
 
-# ---------- sampling by call ----------
+# ---------- what each call can draw ----------
+# A call draws from one or more groups of real plays: first a group, by its probability, then a
+# play uniformly within it. sample_play uses the groups for one random draw; call_odds averages
+# over all of them, so the odds the player sees are exactly the odds the game plays with.
 
-def sample_run(pools: PlayPools, state: GameState, rng: np.random.Generator) -> pd.Series:
-    """Sample a real run from the same situation bucket."""
-    return pick(find_bucket(pools.runs, state), rng)
+PlayGroups = list[tuple[pd.DataFrame, float]]
 
 
-def sample_pass(pools: PlayPools, state: GameState, call: PlayCall, rng: np.random.Generator) -> pd.Series:
-    """Sample a pass of the called length, mixing in sacks at their real rate for the bucket."""
+def run_groups(pools: PlayPools, state: GameState) -> PlayGroups:
+    """Runs: the situation bucket."""
+    return [(find_bucket(pools.runs, state), 1.0)]
+
+
+def pass_groups(pools: PlayPools, state: GameState, call: PlayCall) -> PlayGroups:
+    """Passes of the called length, plus sacks at their real rate for the dropback bucket."""
     dropbacks = find_bucket(pools.dropbacks, state)
     sacks = dropbacks[dropbacks["sack"] == 1]
-    if len(sacks) and rng.random() < len(sacks) / len(dropbacks):
-        return pick(sacks, rng)
+    sack_rate = len(sacks) / len(dropbacks) if len(dropbacks) else 0.0
     pool = pools.short_passes if call == PlayCall.short_pass else pools.deep_passes
-    return pick(find_bucket(pool, state), rng)
+    return [(sacks, sack_rate), (find_bucket(pool, state), 1.0 - sack_rate)]
 
 
-def sample_punt(pools: PlayPools, state: GameState, rng: np.random.Generator) -> pd.Series:
-    """Sample a real punt from the same field zone (all punts if the zone is thin)."""
+def punt_groups(pools: PlayPools, state: GameState) -> PlayGroups:
+    """Real punts from the same field zone (all punts if the zone is thin)."""
     same_zone = pools.punts[pools.punts["zone"] == field_zone(state.yardline_100)]
-    return pick(same_zone if len(same_zone) >= MIN_BUCKET else pools.punts, rng)
+    return [(same_zone if len(same_zone) >= MIN_BUCKET else pools.punts, 1.0)]
+
+
+def play_groups(pools: PlayPools, state: GameState, call: PlayCall) -> PlayGroups:
+    """The groups of real plays a call draws from, with each group's probability."""
+    if call == PlayCall.run:
+        return run_groups(pools, state)
+    if call == PlayCall.punt:
+        return punt_groups(pools, state)
+    if call == PlayCall.field_goal:
+        return field_goal_groups(pools, state)
+    return pass_groups(pools, state, call)
+
+
+def sample_play(pools: PlayPools, state: GameState, call: PlayCall, rng: np.random.Generator) -> pd.Series:
+    """Draw one real play for the call: a group by probability, then a play within it."""
+    groups = [(rows, p) for rows, p in play_groups(pools, state, call) if p > 0 and len(rows)]
+    weights = np.array([p for _, p in groups])
+    index = int(rng.choice(len(groups), p=weights / weights.sum())) if len(groups) > 1 else 0
+    return pick(groups[index][0], rng)
 
 
 def field_goal_kicks(pools: PlayPools, kick_distance: int) -> pd.DataFrame:
@@ -152,16 +177,22 @@ def field_goal_make_chance(kicks: pd.DataFrame, distance: int) -> float:
     return rate * (FG_MAX_DISTANCE - distance) / (FG_MAX_DISTANCE - center)
 
 
-def sample_field_goal(pools: PlayPools, state: GameState, rng: np.random.Generator) -> pd.Series:
-    """Decide make or miss from the distance, then sample a real kick with that result."""
-    distance = state.yardline_100 + FG_SNAP_YARDS
-    kicks = field_goal_kicks(pools, distance)
-    made = bool(rng.random() < field_goal_make_chance(kicks, distance))
+def kicks_with_result(pools: PlayPools, kicks: pd.DataFrame, made: bool) -> pd.DataFrame:
+    """The nearby kicks that were made (or missed); any such kick if none are nearby."""
     matching = kicks[(kicks["field_goal_result"] == "made") == made]
     if matching.empty:
         result = "made" if made else "missed"
         matching = pools.field_goals[pools.field_goals["field_goal_result"] == result]
-    return pick(matching, rng)
+    return matching
+
+
+def field_goal_groups(pools: PlayPools, state: GameState) -> PlayGroups:
+    """Made kicks with the distance's make chance, missed kicks with the rest."""
+    distance = state.yardline_100 + FG_SNAP_YARDS
+    kicks = field_goal_kicks(pools, distance)
+    make = field_goal_make_chance(kicks, distance)
+    return [(kicks_with_result(pools, kicks, True), make),
+            (kicks_with_result(pools, kicks, False), 1.0 - make)]
 
 
 # ---------- clock and state helpers ----------
@@ -336,15 +367,25 @@ def apply_field_goal(state: GameState, row: pd.Series) -> PlayOutcome:
                         f"{distance}-yard field goal is no good.", play_id, new_state, True, True)
 
 
+def apply_play(state: GameState, call: PlayCall, row: pd.Series) -> PlayOutcome:
+    """Apply one real play to the state as the given call."""
+    if call == PlayCall.punt:
+        return apply_punt(state, row)
+    if call == PlayCall.field_goal:
+        return apply_field_goal(state, row)
+    return apply_scrimmage(state, call, row)
+
+
 def run_play(state: GameState, call: PlayCall, pools: PlayPools, rng: np.random.Generator) -> PlayOutcome:
     """Sample a real play for the call and apply it to the state."""
-    if call == PlayCall.punt:
-        return apply_punt(state, sample_punt(pools, state, rng))
-    if call == PlayCall.field_goal:
-        return apply_field_goal(state, sample_field_goal(pools, state, rng))
-    if call == PlayCall.run:
-        return apply_scrimmage(state, call, sample_run(pools, state, rng))
-    return apply_scrimmage(state, call, sample_pass(pools, state, call, rng))
+    return apply_play(state, call, sample_play(pools, state, call, rng))
+
+
+def seeded_rng(scenario_id: str, state: GameState, call: PlayCall) -> np.random.Generator:
+    """A random generator fixed by the scenario, the exact situation and the call, so every player
+    who makes the same call in the same spot gets the same real play (a stable hash, not hash())."""
+    key = f"{scenario_id}|{state.model_dump_json()}|{call.value}".encode()
+    return np.random.default_rng(int.from_bytes(hashlib.sha256(key).digest()[:8], "big"))
 
 
 def simulate(state: GameState, call: PlayCall, pools: PlayPools, win_prob: WinProbFn,
@@ -359,3 +400,68 @@ def simulate(state: GameState, call: PlayCall, pools: PlayPools, win_prob: WinPr
         wp_before=round(wp_before, 4), wp_after=round(wp_after, 4),
         wpa=round(wp_after - wp_before, 4), drive_over=outcome.drive_over,
     )
+
+
+# ---------- odds: every outcome a call can have, averaged ----------
+
+MAX_ODDS_PLAYS = 250   # per group: enough for stable averages while staying fast
+SUCCESS = {Outcome.first_down, Outcome.touchdown, Outcome.fg_made}
+
+
+def thin(rows: pd.DataFrame, limit: int = MAX_ODDS_PLAYS) -> pd.DataFrame:
+    """An evenly spaced subset of a big group (deterministic, so odds don't jitter)."""
+    if len(rows) <= limit:
+        return rows
+    return rows.iloc[np.linspace(0, len(rows) - 1, limit).astype(int)]
+
+
+def odds_rows(pools: PlayPools, state: GameState, call: PlayCall) -> tuple[list[pd.Series], np.ndarray]:
+    """Every play the call can draw, with the probability of drawing it. A field goal's
+    outcome only depends on make or miss, so one kick stands in for each side."""
+    rows, weights = [], []
+    for group, p in play_groups(pools, state, call):
+        if p <= 0 or group.empty:
+            continue
+        group = group.head(1) if call == PlayCall.field_goal else thin(group)
+        rows += [row for _, row in group.iterrows()]
+        weights += [p / len(group)] * len(group)
+    return rows, np.array(weights) / sum(weights)
+
+
+def win_probs(states: list[GameState], win_prob: WinProbFn) -> np.ndarray:
+    """WP for many states: one batch through the model when it supports it, each state once."""
+    keys = [tuple(s.model_dump().values()) for s in states]
+    unique = dict(zip(keys, states))
+    batch = getattr(win_prob, "predict_many", None)
+    values = batch(list(unique.values())) if batch else [win_prob(s) for s in unique.values()]
+    lookup = dict(zip(unique, values))
+    return np.array([lookup[k] for k in keys], dtype=float)
+
+
+def call_odds(state: GameState, call: PlayCall, pools: PlayPools, win_prob: WinProbFn,
+              wp_before: float) -> CallOdds:
+    """What a call is expected to do from this state, averaged over every real play it can draw."""
+    rows, weights = odds_rows(pools, state, call)
+    outcomes = [apply_play(state, call, row) for row in rows]
+    wp_new = win_probs([o.new_state for o in outcomes], win_prob)
+    flipped = np.array([o.possession_flipped for o in outcomes])
+    expected_wp = float(np.dot(weights, np.where(flipped, 1 - wp_new, wp_new)))
+
+    def chance(kinds: set[Outcome]) -> float:
+        """Probability the play ends in one of these outcomes."""
+        return round(float(sum(w for w, o in zip(weights, outcomes) if o.result.outcome in kinds)), 4)
+
+    return CallOdds(
+        call=call, success_chance=None if call == PlayCall.punt else chance(SUCCESS),
+        touchdown_chance=chance({Outcome.touchdown}), turnover_chance=chance({Outcome.turnover}),
+        avg_yards=round(float(np.dot(weights, [o.result.yards for o in outcomes])), 1),
+        expected_wp=round(expected_wp, 4), expected_wpa=round(expected_wp - wp_before, 4),
+        plays_considered=len(outcomes),
+    )
+
+
+def odds_for_state(state: GameState, pools: PlayPools, win_prob: WinProbFn) -> OddsResponse:
+    """WP right now and the odds of every call from this state."""
+    wp_before = win_prob(state)
+    calls = [call_odds(state, call, pools, win_prob, wp_before) for call in PlayCall]
+    return OddsResponse(wp_before=round(wp_before, 4), calls=calls)

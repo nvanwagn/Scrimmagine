@@ -1,50 +1,27 @@
-"""Pick today's 6 scenarios: the last one-possession drive from 6 close games, seeded by the date.
+"""Preview a day's 6 scenarios and write them to data/scenarios.json.
 
-Run from backend/ once per day:  python -m scripts.build_scenarios [--date YYYY-MM-DD]
+The server picks each day's set by itself (GET /api/scenarios, seeded by today's date in US Eastern time),
+so running this is optional: use it to see what a date will serve, or to inspect the JSON.
+
+Run from backend/:  python -m scripts.build_scenarios [--date YYYY-MM-DD]
 """
 
 import argparse
 import json
 from datetime import date
 
-import numpy as np
-import pandas as pd
-
 from app.data_loader import MODEL_PATH, SCENARIOS_PATH, load_plays
-from app.models import Scenario
-from app.turning_points import WinProbFn, scenarios_for_game
+from app.turning_points import daily_date, daily_scenarios
 from app.wp_model import WinProbModel
-
-DAILY_COUNT = 6
-CLOSE_GAME_MARGIN = 8   # demo games: decided by one score or less
-
-
-def demo_games(plays: pd.DataFrame, day: date) -> list[str]:
-    """Close games in a date-seeded random order, so the set changes daily but is repeatable."""
-    margins = plays.groupby("game_id")["result"].first().abs()
-    close = sorted(margins[margins <= CLOSE_GAME_MARGIN].index)
-    rng = np.random.default_rng(int(day.strftime("%Y%m%d")))
-    return list(rng.permutation(close))
-
-
-def pick_daily(plays: pd.DataFrame, day: date, win_prob: WinProbFn) -> list[Scenario]:
-    """The start of the last one-possession drive from each of the first 6 usable demo games."""
-    picked: list[Scenario] = []
-    for game_id in demo_games(plays, day):
-        found = scenarios_for_game(plays[plays["game_id"] == game_id], win_prob, limit=1)
-        picked.extend(found)
-        if len(picked) == DAILY_COUNT:
-            break
-    return picked
 
 
 def main() -> None:
-    """Build the daily scenarios and write data/scenarios.json."""
+    """Pick the day's scenarios exactly like the server does and write data/scenarios.json."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--date", type=date.fromisoformat, default=date.today())
+    parser.add_argument("--date", type=date.fromisoformat, default=daily_date())
     day = parser.parse_args().date
     plays = load_plays()
-    scenarios = pick_daily(plays, day, WinProbModel.load(MODEL_PATH, plays))
+    scenarios = daily_scenarios(plays, day, WinProbModel.load(MODEL_PATH, plays))
     SCENARIOS_PATH.write_text(json.dumps([s.model_dump(mode="json") for s in scenarios], indent=2),
                               encoding="utf-8")
     print(f"Wrote {len(scenarios)} scenarios for {day} to {SCENARIOS_PATH}")

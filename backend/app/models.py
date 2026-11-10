@@ -55,10 +55,12 @@ class PlayResult(BaseModel):
 
 
 class SimulateRequest(BaseModel):
-    """Body for POST /api/simulate."""
+    """Body for POST /api/simulate. scenario_id (daily games) makes the outcome predetermined:
+    the same for every player who makes that call in that situation. Omit it for a random draw."""
 
     state: GameState
     call: PlayCall
+    scenario_id: str | None = None
 
 
 class SimulateResponse(BaseModel):
@@ -70,6 +72,37 @@ class SimulateResponse(BaseModel):
     wp_after: float = Field(ge=0, le=1)
     wpa: float
     drive_over: bool
+
+
+class OddsRequest(BaseModel):
+    """Body for POST /api/call-odds."""
+
+    state: GameState
+
+
+class CallOdds(BaseModel):
+    """What one call is expected to do from a state, averaged over every real play it can draw.
+
+    success_chance: first down or touchdown (run, pass) or a made kick (field goal); None for punts.
+    avg_yards is net yards for punts. expected_wp is the offense's WP after the play, averaged
+    (original offense's point of view, like SimulateResponse); expected_wpa = expected_wp - wp_before.
+    """
+
+    call: PlayCall
+    success_chance: float | None
+    touchdown_chance: float
+    turnover_chance: float
+    avg_yards: float
+    expected_wp: float
+    expected_wpa: float
+    plays_considered: int
+
+
+class OddsResponse(BaseModel):
+    """WP before the snap and the odds of all five calls (the client decides which are legal)."""
+
+    wp_before: float
+    calls: list[CallOdds]
 
 
 class RealPlay(BaseModel):

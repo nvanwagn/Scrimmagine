@@ -149,3 +149,15 @@ def test_close_game_pool() -> None:
     from app.turning_points import close_game_ids
     plays = pd.DataFrame([tp_play(1, 1, result=8) | {"game_id": "G1"}, tp_play(1, 1, result=-9) | {"game_id": "G2"}])
     assert close_game_ids(plays) == ["G1"]
+
+
+def test_daily_set_changes_by_date_and_is_stable_within_a_day() -> None:
+    """Same date, same 6; another date, a different order of close games."""
+    from datetime import date
+    from app.turning_points import daily_game_order
+    games = [pd.DataFrame([tp_play(1, 1, result=3)]).assign(game_id=f"2024_01_G{i:02d}") for i in range(40)]
+    plays = pd.concat(games, ignore_index=True)
+    monday, tuesday = date(2026, 11, 9), date(2026, 11, 10)
+    assert daily_game_order(plays, monday) == daily_game_order(plays, monday)
+    assert daily_game_order(plays, monday) != daily_game_order(plays, tuesday)
+    assert sorted(daily_game_order(plays, monday)) == sorted(plays["game_id"].unique())

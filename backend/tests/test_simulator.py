@@ -224,3 +224,82 @@ def test_incompletion_late_takes_six_seconds(state: GameState) -> None:
 def test_full_grid_fixture_is_dense() -> None:
     """Sanity check on the fixture itself."""
     assert len(full_grid()) > 7000
+
+
+# ---------- odds ----------
+
+def field_wp(state: GameState) -> float:
+    """Fake WP model: the closer to the opponent's goal line, the better."""
+    return 1 - state.yardline_100 / 100
+
+
+def test_odds_valid_for_every_situation(grid_plays: pd.DataFrame, state: GameState) -> None:
+    """All five calls get odds in every situation: chances in [0, 1], punts have no success chance."""
+    from app.simulator import odds_for_state
+    pools = build_pools(grid_plays)
+    for situation in situations(state):
+        odds = odds_for_state(situation, pools, field_wp)
+        assert [o.call for o in odds.calls] == list(PlayCall)
+        for o in odds.calls:
+            chances = [o.touchdown_chance, o.turnover_chance] + ([] if o.success_chance is None else [o.success_chance])
+            assert all(0 <= c <= 1 for c in chances) and o.plays_considered > 0
+            assert o.expected_wpa == pytest.approx(o.expected_wp - odds.wp_before, abs=1e-3)
+            assert (o.success_chance is None) == (o.call == PlayCall.punt)
+
+
+def test_odds_average_every_play_in_the_bucket(state: GameState) -> None:
+    """Half the runs gain 10 (first down at the 30), half gain nothing (3rd down at the 40)."""
+    from app.simulator import call_odds
+    rows = [make_play(i, "run", 2, 7, 40, yards=10 if i % 2 else 0) for i in range(40)]
+    odds = call_odds(state, PlayCall.run, build_pools(pd.DataFrame(rows)), field_wp, wp_before=0.6)
+    assert odds.success_chance == 0.5 and odds.avg_yards == 5.0 and odds.plays_considered == 40
+    assert odds.expected_wp == pytest.approx(0.65) and odds.expected_wpa == pytest.approx(0.05)
+
+
+def test_odds_weigh_sacks_at_their_real_rate(state: GameState) -> None:
+    """1 sack in 4 dropbacks: a quarter of the short-pass odds come from the sack."""
+    from app.simulator import call_odds
+    rows = [make_play(i, "pass", 2, 7, 40, yards=10, pass_length="short") for i in range(30)]
+    rows += [make_play(100 + i, "pass", 2, 7, 40, yards=-10, sack=1) for i in range(10)]
+    odds = call_odds(state, PlayCall.short_pass, build_pools(pd.DataFrame(rows)), field_wp, wp_before=0.6)
+    assert odds.success_chance == 0.75 and odds.avg_yards == 5.0
+
+
+def test_field_goal_odds_use_the_make_chance(grid_plays: pd.DataFrame, state: GameState) -> None:
+    """A field goal's success chance is exactly the simulator's make chance for that distance."""
+    from app.simulator import call_odds, field_goal_kicks
+    pools = build_pools(grid_plays)
+    distance = state.yardline_100 + 17
+    odds = call_odds(state, PlayCall.field_goal, pools, field_wp, wp_before=0.6)
+    assert odds.success_chance == pytest.approx(field_goal_make_chance(field_goal_kicks(pools, distance), distance), abs=1e-4)
+
+
+def test_turnovers_flip_the_win_probability(state: GameState) -> None:
+    """An interception at the spot is scored from the original offense's side (1 - their WP)."""
+    from app.simulator import call_odds
+    rows = [make_play(i, "pass", 2, 7, 40, yards=0, pass_length="deep", interception=1) for i in range(30)]
+    odds = call_odds(state, PlayCall.deep_pass, build_pools(pd.DataFrame(rows)), field_wp, wp_before=0.6)
+    assert odds.turnover_chance == 1.0
+    # The defense takes over 60 yards from our end zone: WP 0.4 for them, so 0.6 for us (0.4 unflipped).
+    assert odds.expected_wp == pytest.approx(0.6)
+
+
+# ---------- daily game: predetermined outcomes ----------
+
+def test_daily_outcomes_are_the_same_for_everyone(grid_plays: pd.DataFrame, state: GameState) -> None:
+    """Same scenario, situation and call: the same real play every time (fair for every player)."""
+    from app.simulator import seeded_rng
+    pools = build_pools(grid_plays)
+    for call in PlayCall:
+        runs = [simulate(state, call, pools, field_wp, seeded_rng("2024_01_AAA_BBB_1", state, call))
+                for _ in range(5)]
+        assert len({r.model_dump_json() for r in runs}) == 1
+
+
+def test_daily_outcomes_depend_on_the_spot(grid_plays: pd.DataFrame, state: GameState) -> None:
+    """Different scenarios or situations draw independently (not one fixed play for everything)."""
+    from app.simulator import seeded_rng
+    pools = build_pools(grid_plays)
+    plays = {simulate(state, PlayCall.run, pools, field_wp, seeded_rng(f"s{i}", state, PlayCall.run)).result.sampled_play_id
+             for i in range(20)}
+    assert len(plays) > 5
