@@ -76,6 +76,8 @@ export class Field {
     this.visible = clamp(this.W / PHONE_PX_PER_YARD, 20, MAX_VISIBLE_YARDS);
     this.ppy = this.W / this.visible;
     this.spec = this.phone ? FORMATIONS.phone : FORMATIONS.desktop;
+    // Players shrink with a short field (the CSS caps it at 420px) so the formation doesn't overlap.
+    this.scale = this.phone ? 1 : clamp(this.H / 420, 0.6, 1);
   }
 
   px(x) { return (x + 10) * this.ppy; }
@@ -254,7 +256,7 @@ export class Field {
 
   render() {
     const sprites = { off: spritesNow(this.kits.off), def: spritesNow(this.kits.def) };
-    const w = this.phone ? 30 : 40, h = this.phone ? 36 : 48;
+    const w = Math.round((this.phone ? 30 : 40) * this.scale), h = Math.round((this.phone ? 36 : 48) * this.scale);
     for (const a of this.actors) {
       const src = sprites[a.side][a.pose];
       if (a.src !== src) { a.img.src = src; a.src = src; }
@@ -275,7 +277,7 @@ export class Field {
       }
     }
     if (this.ball) {
-      const [bw, bh] = this.phone ? [12, 9] : [16, 12];
+      const [bw, bh] = (this.phone ? [12, 9] : [16, 12]).map(v => Math.round(v * this.scale));
       const b = this.ball, s = b.el.style;
       const scale = 1 + b.h / 160;
       s.width = `${bw}px`; s.height = `${bh}px`;

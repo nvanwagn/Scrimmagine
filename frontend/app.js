@@ -287,9 +287,9 @@ async function restoreGame(sc, index, run) {
 }
 
 /**
- * Fetch every call's odds for the state about to be snapped. The promise never rejects (null on
- * failure: the calls still work, that play just isn't scored as a decision). When the odds land,
- * the call buttons are redrawn with them.
+ * Fetch every call's odds for the state about to be snapped. They aren't shown: they only grade
+ * the decision. The promise never rejects (null on failure: the calls still work, that play just
+ * isn't scored as a decision).
  */
 function loadOdds(s) {
   const g = app.game, token = g.token;
@@ -303,37 +303,9 @@ function loadOdds(s) {
         g.wpNow = data.wp_before;
         renderWpBar($('wpbar'), data.wp_before);
       }
-      renderCalls(s);
       return data;
     });
   g.odds = entry;
-}
-
-/** The odds for this state, if they have arrived. */
-function oddsFor(s) {
-  const o = app.game?.odds;
-  return o && o.state === s ? o.data : null;
-}
-
-const pctText = v => `${Math.round(v * 100)}%`;
-
-/** One line of odds for a call button: the chance that matters for it, plus turnover risk. */
-function oddsLine(call, s) {
-  const o = oddsFor(s)?.calls.find(c => c.call === call);
-  if (!o) return 'ODDS …';
-  if (call === 'punt') return `NET ~${Math.round(o.avg_yards)} YDS`;
-  if (call === 'field_goal') return `MAKE ${pctText(o.success_chance)}`;
-  const main = isGoalToGo(s) ? `TD ${pctText(o.touchdown_chance)}` : `1ST DOWN ${pctText(o.success_chance)}`;
-  return o.turnover_chance >= 0.02 ? `${main} · TO ${pctText(o.turnover_chance)}` : main;
-}
-
-/** Hover text: the full odds and how many real plays they come from. */
-function oddsTitle(call, s) {
-  const o = oddsFor(s)?.calls.find(c => c.call === call);
-  if (!o) return '';
-  const parts = o.success_chance == null ? [] : [`${call === 'field_goal' ? 'make' : 'first down or TD'} ${pctText(o.success_chance)}`];
-  parts.push(`TD ${pctText(o.touchdown_chance)}`, `turnover ${pctText(o.turnover_chance)}`, `avg ${o.avg_yards} yds`);
-  return `From ${o.plays_considered} real plays like this one: ${parts.join(', ')}.`;
 }
 
 /** How good a call was before the snap: its expected WP against the best legal call's. */
@@ -475,10 +447,9 @@ function renderCalls(s) {
   const grid = $('calls');
   grid.className = 'calls';
   grid.innerHTML = CALLS.map((c, i) => `
-    <button type="button" class="call" data-call="${c}" ${legal[c] ? '' : 'disabled'} title="${esc(oddsTitle(c, s))}">
+    <button type="button" class="call" data-call="${c}" ${legal[c] ? '' : 'disabled'}>
       <span class="name"><span class="key">${i + 1}</span><span>${CALL_LABEL[c]}</span></span>
       <span class="hint">${esc(callHint(c, s))}</span>
-      ${legal[c] ? `<span class="odds">${esc(oddsLine(c, s))}</span>` : ''}
     </button>`).join('') + coachTile();
 }
 
@@ -583,6 +554,8 @@ async function makeCall(call) {
   const i = g.plays.length;
   g.plays.push({ before, call, sim, booth: null, decision });
   requestBooth(i);
+  // Fetch the next snap's odds now, while the play animates, so they're ready when it lands.
+  if (!sim.drive_over) loadOdds(sim.new_state);
 
   if (i > 0) field.setup(before, g.kits, endZones(), nameTags());
   $('banner').hidden = true;
@@ -597,7 +570,6 @@ async function makeCall(call) {
   g.state = sim.new_state;
   g.wpNow = sim.wp_after;
   g.phase = sim.drive_over ? 'over' : 'presnap';
-  if (!sim.drive_over) loadOdds(sim.new_state);
   if (sim.drive_over) {
     if (g.mode === 'endless') recordEndlessRound(sim);
     else recordGrade();
